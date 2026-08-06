@@ -1,7 +1,7 @@
-# Release workflow: push a tag like v1.3.3 and this submits that version to
-# AMO (listed channel) and attaches the built xpi to a GitHub release.
+# Release workflow: push a tag like v1.8.1 to build xpi/zip packages and attach
+# them to a GitHub release. Store submissions run only when credentials exist.
 #
-# Required repository secrets (Settings → Secrets and variables → Actions):
+# Optional store-publishing secrets (Settings → Secrets and variables → Actions):
 #   WEB_EXT_API_KEY      AMO JWT issuer (user:12345678:123)
 #   WEB_EXT_API_SECRET   AMO JWT secret
 #   CWS_EXTENSION_ID     Chrome Web Store item id (from the listing URL)
@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write   # create the GitHub release
+    env:
+      HAS_AMO_CREDENTIALS: ${{ secrets.WEB_EXT_API_KEY != '' && secrets.WEB_EXT_API_SECRET != '' }}
+      HAS_CWS_CREDENTIALS: ${{ secrets.CWS_EXTENSION_ID != '' && secrets.CWS_CLIENT_ID != '' && secrets.CWS_CLIENT_SECRET != '' && secrets.CWS_REFRESH_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v5
@@ -39,21 +42,9 @@ jobs:
             exit 1
           fi
 
-      - name: Build and submit to AMO (Firefox, listed)
+      - name: Build extension packages
         working-directory: nexus-addon
-        env:
-          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
-          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
-        run: python3 build.py --sign
-
-      - name: Publish to Chrome Web Store
-        working-directory: nexus-addon
-        env:
-          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
-          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
-          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
-          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-        run: python3 build.py --chrome
+        run: python3 build.py
 
       - name: Create GitHub release with the packages
         env:
@@ -61,5 +52,23 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes "See nexus-addon/CHANGELOG.md for details. Firefox via AMO, Chrome via the Web Store." \
+            --notes "See nexus-addon/CHANGELOG.md for details. Firefox and Chrome packages are attached; store submissions run when credentials are configured." \
             nexus-accounting-*.xpi nexus-accounting-*.zip
+
+      - name: Submit to AMO (Firefox, listed)
+        if: env.HAS_AMO_CREDENTIALS == 'true'
+        working-directory: nexus-addon
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: python3 build.py --sign
+
+      - name: Publish to Chrome Web Store
+        if: env.HAS_CWS_CREDENTIALS == 'true'
+        working-directory: nexus-addon
+        env:
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: python3 build.py --chrome
