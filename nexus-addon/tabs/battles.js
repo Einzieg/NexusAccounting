@@ -6,7 +6,7 @@
 import {
   PER_PAGE, fmt, escapeHtml, makeStatCard, store, zoneCell, dayKey,
   computeResourcesLost, combinedLost, emptyResources,
-  RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI,
+  RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI, uiLabel,
 } from '../common.js';
 
 // Resource cost of a record's ship losses (destroyed + half-cost repair).
@@ -38,8 +38,8 @@ function weighted(res) {
 
 // Battle source → fuel_log mission type (see fuelMissionType in background.js).
 const SRC_FUEL_TYPE = {
-  'Pirate camp': 'pirate', 'Mining raid': 'mining', 'Survey battle': 'survey',
-  'Expedition': 'expedition', 'Wormhole': 'expedition',
+  '海盗营地': 'pirate', '采矿遇袭': 'mining', '勘测战斗': 'survey',
+  '远征': 'expedition', '虫洞': 'expedition',
 };
 // Mean hydrogen fuel per mission of each type, from fuel_log rows the predicate
 // keeps. fuel_log has no per-report id, so combat fuel is approximated as the
@@ -90,7 +90,7 @@ function shipImgUrl(name) {
 function imgHtml(name) {
   const url = shipImgUrl(name);
   if (url) return `<img src="${url}" alt="" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:3px">`;
-  return `<span title="${name || 'Unknown ship'}" style="display:inline-block;width:16px;height:16px;border:1px solid #30363d;border-radius:3px;color:#8b949e;font-size:10px;line-height:14px;text-align:center;vertical-align:middle;margin-right:3px">?</span>`;
+  return `<span title="${name || '未知舰船'}" style="display:inline-block;width:16px;height:16px;border:1px solid #30363d;border-radius:3px;color:#8b949e;font-size:10px;line-height:14px;text-align:center;vertical-align:middle;margin-right:3px">?</span>`;
 }
 
 // shipDefId→qty detail → [{ name, qty }] using the ship catalog.
@@ -131,8 +131,8 @@ function collectBattles() {
 
   for (const r of (store.pirate_recent_reports || [])) {
     rows.push({
-      key: `pirate:${r.id}`, created_at: r.created_at, source: 'Pirate camp',
-      location: r.camp_id != null ? `Camp #${r.camp_id}` : '—', zone: r.zone, outcome: r.outcome || '—',
+      key: `pirate:${r.id}`, created_at: r.created_at, source: '海盗营地',
+      location: r.camp_id != null ? `营地 #${r.camp_id}` : '—', zone: r.zone, outcome: r.outcome || '—',
       lost: r.ships_lost || 0, damaged: r.ships_damaged || 0, killed: r.pirates_destroyed ?? null,
       debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
       yourFleet: fleetToNames(r.attacker_fleet, byKey), enemyFleet: fleetToNames(r.pirate_fleet, byKey),
@@ -149,7 +149,7 @@ function collectBattles() {
     // isn't proof: drill breakdowns destroy ships with no fight.
     if (!(r.rounds && r.rounds.length) && !(r.enemy_fleet && r.enemy_fleet.length)) continue;
     rows.push({
-      key: `mining:${r.id}`, created_at: r.created_at, source: 'Mining raid',
+      key: `mining:${r.id}`, created_at: r.created_at, source: '采矿遇袭',
       location: r.location || r.planet || '—', zone: r.zone, outcome: r.combat_outcome,
       lost: r.ships_lost || 0, damaged: 0, killed: null, youAttacker: false,   // a raid: you defend
       debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
@@ -165,7 +165,7 @@ function collectBattles() {
   for (const r of (store.recent_reports || [])) {
     if (!r.combat_outcome) continue;   // only real combat — event/hazard damage isn't a battle
     rows.push({
-      key: `survey:${r.id}`, created_at: r.created_at, source: 'Survey battle',
+      key: `survey:${r.id}`, created_at: r.created_at, source: '勘测战斗',
       location: r.system_name || '—', zone: r.zone, outcome: r.combat_outcome || 'ambush',
       lost: r.ships_lost || 0, damaged: r.ships_damaged || 0, killed: null,
       debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
@@ -178,7 +178,7 @@ function collectBattles() {
     });
   }
   for (const r of (store.exp_recent_reports || [])) {
-    const src = r.kind === 'wormhole' ? 'Wormhole' : 'Expedition';
+    const src = r.kind === 'wormhole' ? '虫洞' : '远征';
     // Wormhole runs carry per-encounter combat — one battle row per combat
     // encounter (clean wins included), each with its own round log + your fleet.
     // A round log means a real fight; encounters with a loss but no rounds are
@@ -214,7 +214,7 @@ function collectBattles() {
   for (const r of (store.pvp_recent_reports || [])) {
     rows.push({
       key: `pvp:${r.id}`, created_at: r.created_at, source: 'PvP',
-      location: r.opponent ? `${r.planet || '—'} vs ${r.opponent}` : (r.planet || '—'),
+      location: r.opponent ? `${r.planet || '—'} 对阵 ${r.opponent}` : (r.planet || '—'),
       zone: null, outcome: r.won ? 'won' : 'lost', youAttacker: r.side === 'attacker',
       lost: r.ships_lost || 0, damaged: r.ships_damaged || 0, killed: null,
       debris: (r.debris_ore || 0) + (r.debris_alloys || 0) + (r.debris_silicates || 0),
@@ -251,18 +251,18 @@ function exportBattlesCsv(rows) {
     const yDmg = ya ? rd.atk_dmg : rd.def_dmg, eDmg = ya ? rd.def_dmg : rd.atk_dmg;
     const yHp = ya ? rd.atk_hp : rd.def_hp, eHp = ya ? rd.def_hp : rd.atk_hp;
     const yK = killsStr(ya ? rd.atk_killed : rd.def_killed), eK = killsStr(ya ? rd.def_killed : rd.atk_killed);
-    return `R${rd.round}: you ${yDmg} dmg${yK ? ` (killed ${yK})` : ''}, enemy ${eDmg} dmg${eK ? ` (killed ${eK})` : ''}, HP ${yHp ?? '-'}/${eHp ?? '-'}`;
+    return `第${rd.round}回合：我方造成 ${yDmg} 伤害${yK ? `（摧毁 ${yK}）` : ''}，敌方造成 ${eDmg} 伤害${eK ? `（摧毁 ${eK}）` : ''}，耐久 ${yHp ?? '-'}/${eHp ?? '-'}`;
   }).join(' | ');
 
-  const cols = ['Date', 'Source', 'Location', 'Zone', 'Outcome', 'Lost', 'Damaged', 'Enemy killed', 'Debris',
-    'Ship-loss cost', 'Your fleet', 'Enemy fleet', 'Rounds'];
+  const cols = ['日期', '来源', '位置', '区域', '结果', '损失', '受损', '摧毁敌舰', '残骸',
+    '舰船损失成本', '我方舰队', '敌方舰队', '回合'];
   const esc = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const lines = [cols.join(',')];
   for (const r of rows) {
     lines.push([
       new Date(r.created_at).toISOString(),
-      r.source, r.location, r.zone || 'unknown',
-      String(r.outcome).replace(/_/g, ' '),
+      r.source, r.location, uiLabel(r.zone || 'unknown'),
+      uiLabel(r.outcome),
       r.lost || 0, r.damaged || 0, r.killed || 0, r.debris || 0,
       weighted(r.cost || emptyResources()),
       fleetStr(r.yourFleet), fleetStr(r.enemyFleet),
@@ -274,7 +274,7 @@ function exportBattlesCsv(rows) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `battles-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `战斗记录-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -320,13 +320,13 @@ function roundsBlock(rounds, youAttacker, yourFleet, enemyFleet) {
   table.style.cssText = 'width:100%;border-collapse:collapse;margin:4px 0 8px';
   table.innerHTML = `<thead><tr style="text-align:left;color:#8b949e;font-size:0.78rem">
     <th style="padding:2px 6px">#</th>
-    <th style="padding:2px 6px">Your dmg / kills</th>
-    <th style="padding:2px 6px">Enemy dmg / kills</th>
-    <th style="padding:2px 6px;text-align:right">HP you / enemy</th></tr></thead>`;
+    <th style="padding:2px 6px">我方伤害 / 击毁</th>
+    <th style="padding:2px 6px">敌方伤害 / 击毁</th>
+    <th style="padding:2px 6px;text-align:right">我方 / 敌方耐久</th></tr></thead>`;
   const tb = document.createElement('tbody');
   const pre = document.createElement('tr');
   pre.style.cssText = 'border-top:1px solid #21262d;background:#161b22';
-  pre.append(td('<span style="color:#8b949e">Fleet</span>'), td(fleetCell(yourFleet)), td(fleetCell(enemyFleet)), td('100% / 100%', 'text-align:right;color:#8b949e'));
+  pre.append(td('<span style="color:#8b949e">舰队</span>'), td(fleetCell(yourFleet)), td(fleetCell(enemyFleet)), td('100% / 100%', 'text-align:right;color:#8b949e'));
   tb.appendChild(pre);
   for (const rd of rounds) {
     const tr = document.createElement('tr');
@@ -368,7 +368,7 @@ export function renderBattlesTab() {
   // overrides it: the typed dates drive filtering, View is left untouched.
   const viewSel = document.createElement('select');
   viewSel.style.cssText = inputCss;
-  for (const [v, lbl] of [['all', 'All time'], ['daily', 'Daily'], ['last3', 'Last 3 days'], ['last7', 'Last 7 days'], ['last30', 'Last 30 days']]) {
+  for (const [v, lbl] of [['all', '全部时间'], ['daily', '当天'], ['last3', '最近 3 天'], ['last7', '最近 7 天'], ['last30', '最近 30 天']]) {
     const o = document.createElement('option'); o.value = v; o.textContent = lbl;
     if (v === battleView) o.selected = true; viewSel.appendChild(o);
   }
@@ -385,7 +385,7 @@ export function renderBattlesTab() {
   const sel = document.createElement('select');
   sel.style.cssText = inputCss;
   for (const s of ['all', ...new Set(allRows.map(r => r.source))]) {
-    const o = document.createElement('option'); o.value = s; o.textContent = s === 'all' ? 'All' : s;
+    const o = document.createElement('option'); o.value = s; o.textContent = s === 'all' ? '全部' : s;
     if (s === battleFilter) o.selected = true; sel.appendChild(o);
   }
   sel.addEventListener('change', () => { battleFilter = sel.value; battlePage = 1; renderBattlesTab(); });
@@ -394,11 +394,11 @@ export function renderBattlesTab() {
   const to = document.createElement('input'); to.type = 'date'; to.value = battleTo; to.style.cssText = inputCss;
   from.addEventListener('change', () => { battleFrom = from.value; battlePage = 1; renderBattlesTab(); });
   to.addEventListener('change', () => { battleTo = to.value; battlePage = 1; renderBattlesTab(); });
-  const clr = document.createElement('button'); clr.textContent = 'Clear'; clr.style.cssText = inputCss + ';cursor:pointer';
+  const clr = document.createElement('button'); clr.textContent = '清除'; clr.style.cssText = inputCss + ';cursor:pointer';
   clr.disabled = !windowed;
   clr.addEventListener('click', () => { battleFrom = ''; battleTo = ''; battleView = 'all'; battlePage = 1; renderBattlesTab(); });
 
-  bar.append(gray('View:'), viewSel, gray('Source:'), sel, gray('Days:'), from, gray('→'), to, clr);
+  bar.append(gray('视图：'), viewSel, gray('来源：'), sel, gray('日期：'), from, gray('→'), to, clr);
   root.append(bar);
 
   // Resource economy across the current selection (source + window).
@@ -422,61 +422,61 @@ export function renderBattlesTab() {
   // Per-resource cards for a resources object; `signed` prefixes '+' on ≥0.
   function resCards(res, suffix, signed) {
     const out = [];
-    for (const [lbl, key] of [['Ore', 'ore'], ['Silicates', 'silicates'], ['Hydrogen', 'hydrogen'], ['Alloys', 'alloys']]) {
+    for (const [lbl, key] of [['矿石', 'ore'], ['硅酸盐', 'silicates'], ['氢', 'hydrogen'], ['合金', 'alloys']]) {
       const v = res[key] || 0;
       out.push(makeStatCard(`${lbl}${suffix}`, (signed && v >= 0 ? '+' : '') + fmt(v), key));
     }
     for (const [k, v] of Object.entries(res.rare || {})) {
       if (!v) continue;
-      out.push(makeStatCard(`${k.replace(/_/g, ' ')}${suffix}`, (signed && v >= 0 ? '+' : '') + fmt(v), 'rare'));
+      out.push(makeStatCard(`${uiLabel(k)}${suffix}`, (signed && v >= 0 ? '+' : '') + fmt(v), 'rare'));
     }
     return out;
   }
 
   // Summary cards (current selection).
-  const costCard = makeStatCard('Ships lost cost', fmt(weighted(cost)), '', 'color:#ff7b72');
-  costCard.title = `Ore ${fmt(cost.ore)}, Silicates ${fmt(cost.silicates)}, Hydrogen ${fmt(cost.hydrogen)}, Alloys ${fmt(cost.alloys)} — weighted total.`;
+  const costCard = makeStatCard('舰船损失成本', fmt(weighted(cost)), '', 'color:#ff7b72');
+  costCard.title = `矿石 ${fmt(cost.ore)}、硅酸盐 ${fmt(cost.silicates)}、氢 ${fmt(cost.hydrogen)}、合金 ${fmt(cost.alloys)}——加权总计。`;
   const cards = document.createElement('div');
   cards.className = 'stats';
-  const fuelCard = makeStatCard('Fuel cost', fmt(fuel), 'hydrogen');
-  fuelCard.title = 'Mean trip fuel per mission type × battles of that type (fuel_log has no per-report id).';
+  const fuelCard = makeStatCard('燃料成本', fmt(fuel), 'hydrogen');
+  fuelCard.title = '各任务类型的平均航程燃料 × 该类型战斗次数（fuel_log 没有单条报告 ID）。';
   cards.append(
-    makeStatCard('Battles', fmt(view.length), 'missions'),
-    makeStatCard('Ships lost', fmt(view.reduce((s, r) => s + r.lost, 0)), '', 'color:#ff7b72'),
+    makeStatCard('战斗次数', fmt(view.length), 'missions'),
+    makeStatCard('损失舰船', fmt(view.reduce((s, r) => s + r.lost, 0)), '', 'color:#ff7b72'),
     costCard,
     fuelCard,
-    makeStatCard('Ships damaged', fmt(view.reduce((s, r) => s + r.damaged, 0)), '', 'color:#e3b341'),
-    makeStatCard('Enemies destroyed', fmt(view.reduce((s, r) => s + (r.killed || 0), 0)), '', 'color:#56d364'),
+    makeStatCard('受损舰船', fmt(view.reduce((s, r) => s + r.damaged, 0)), '', 'color:#e3b341'),
+    makeStatCard('摧毁敌舰', fmt(view.reduce((s, r) => s + (r.killed || 0), 0)), '', 'color:#56d364'),
   );
   const label = document.createElement('div');
   label.className = 'section-label';
-  label.textContent = 'Combat' + (windowed ? ` — ${battleFrom || 'start'} → ${battleTo || 'now'}` : ' (recent records)');
+  label.textContent = '战斗' + (windowed ? ` — ${battleFrom || '最早'} → ${battleTo || '现在'}` : '（最近记录）');
   root.append(label, cards);
 
   // Debris salvaged, per resource.
   const debrisLabel = document.createElement('div');
-  debrisLabel.className = 'section-label'; debrisLabel.textContent = 'Debris salvaged';
+  debrisLabel.className = 'section-label'; debrisLabel.textContent = '已回收残骸';
   const debrisCards = document.createElement('div'); debrisCards.className = 'stats';
-  debrisCards.append(...resCards(debris, ' debris', false));
+  debrisCards.append(...resCards(debris, '残骸', false));
   root.append(debrisLabel, debrisCards);
 
   // Raid pillage (resources stolen from raided camps), per resource.
   const pillageLabel = document.createElement('div');
-  pillageLabel.className = 'section-label'; pillageLabel.textContent = 'Raid pillage';
+  pillageLabel.className = 'section-label'; pillageLabel.textContent = '突袭掠夺';
   const pillageCards = document.createElement('div'); pillageCards.className = 'stats';
-  pillageCards.append(...resCards(pillage, ' pillage', false));
+  pillageCards.append(...resCards(pillage, '掠夺', false));
   root.append(pillageLabel, pillageCards);
 
   // Net (won − ship-loss cost), per resource + weighted total.
   const totalNet = weighted(net);
-  const netTotalCard = makeStatCard('Total net', (totalNet >= 0 ? '+' : '') + fmt(totalNet), '',
+  const netTotalCard = makeStatCard('总净收益', (totalNet >= 0 ? '+' : '') + fmt(totalNet), '',
     totalNet >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  netTotalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, exotics×10.'
-    + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
+  netTotalCard.title = '加权：矿石×1、硅酸盐×2、氢×3、合金×5、稀有资源×10。'
+    + (fuel ? ` 已计入约 ${fmt(fuel)} 氢燃料。` : '');
   const netLabel = document.createElement('div');
-  netLabel.className = 'section-label'; netLabel.textContent = 'Net (won − ship-loss cost)';
+  netLabel.className = 'section-label'; netLabel.textContent = '净收益（所得资源 − 舰船损失成本）';
   const netCards = document.createElement('div'); netCards.className = 'stats';
-  netCards.append(...resCards(net, ' net', true), netTotalCard);
+  netCards.append(...resCards(net, '净收益', true), netTotalCard);
   root.append(netLabel, netCards);
 
   // Table.
@@ -486,8 +486,8 @@ export function renderBattlesTab() {
   const slice = sorted.slice((battlePage - 1) * PER_PAGE, battlePage * PER_PAGE);
 
   const cols = [
-    ['created_at', 'Date'], ['source', 'Source'], ['location', 'Location'], ['zone', 'Zone'],
-    ['outcome', 'Outcome'], ['lost', 'Lost'], ['damaged', 'Damaged'], ['killed', 'Enemy killed'], ['debris', 'Debris'],
+    ['created_at', '日期'], ['source', '来源'], ['location', '位置'], ['zone', '区域'],
+    ['outcome', '结果'], ['lost', '损失'], ['damaged', '受损'], ['killed', '摧毁敌舰'], ['debris', '残骸'],
   ];
   const table = document.createElement('table');
   const thead = document.createElement('thead');
@@ -513,7 +513,7 @@ export function renderBattlesTab() {
     const tdLoc = document.createElement('td'); tdLoc.textContent = r.location;
     const tdOut = document.createElement('td');
     const badge = document.createElement('span'); badge.className = 'badge';
-    badge.textContent = String(r.outcome).replace(/_/g, ' '); badge.style.color = outcomeColor(r.outcome);
+    badge.textContent = uiLabel(r.outcome); badge.style.color = outcomeColor(r.outcome);
     tdOut.appendChild(badge);
     tr.append(tdDate, tdSrc, tdLoc, zoneCell(r.zone), tdOut,
       numTd(r.lost), numTd(r.damaged),
@@ -533,13 +533,13 @@ export function renderBattlesTab() {
       // Fleets ride atop their columns inside the rounds table; only fall back to
       // standalone lines when there is no round log to host them.
       const lines = [
-        ...(rb ? [] : [fleetLine('Your fleet', r.yourFleet), fleetLine('Enemy fleet', r.enemyFleet)]),
-        fleetLine('Ships lost', r.lostDetail),
-        fleetLine('Ships damaged', r.damagedDetail),
+        ...(rb ? [] : [fleetLine('我方舰队', r.yourFleet), fleetLine('敌方舰队', r.enemyFleet)]),
+        fleetLine('损失舰船', r.lostDetail),
+        fleetLine('受损舰船', r.damagedDetail),
       ].filter(Boolean);
       lines.forEach(l => dtd.appendChild(l));
       if (rb) dtd.appendChild(rb);
-      if (!lines.length && !rb) { const p = document.createElement('div'); p.style.color = '#484f58'; p.textContent = 'No combat detail recorded for this battle.'; dtd.appendChild(p); }
+      if (!lines.length && !rb) { const p = document.createElement('div'); p.style.color = '#484f58'; p.textContent = '该战斗没有记录详细信息。'; dtd.appendChild(p); }
       dtr.appendChild(dtd); tbody.appendChild(dtr);
     }
   }
@@ -549,16 +549,16 @@ export function renderBattlesTab() {
   wrap.className = 'reports-section';
   const header = document.createElement('div');
   header.className = 'reports-header';
-  const h2 = document.createElement('h2'); h2.textContent = 'Recent battles';
+  const h2 = document.createElement('h2'); h2.textContent = '最近战斗';
   const exportBtn = document.createElement('button');
-  exportBtn.textContent = '⭳ Export CSV';
-  exportBtn.title = 'Download the current view (all pages, current filter/range) as CSV';
+  exportBtn.textContent = '⭳ 导出 CSV';
+  exportBtn.title = '将当前视图（全部分页、当前筛选和日期范围）下载为 CSV';
   exportBtn.disabled = !sorted.length;
   exportBtn.addEventListener('click', () => exportBattlesCsv(sorted));
   const pg = document.createElement('div'); pg.className = 'pagination';
-  const prev = document.createElement('button'); prev.textContent = '← Prev'; prev.disabled = battlePage <= 1;
-  const info = document.createElement('span'); info.textContent = `Page ${battlePage} / ${totalPages} (${sorted.length} total)`;
-  const next = document.createElement('button'); next.textContent = 'Next →'; next.disabled = battlePage >= totalPages;
+  const prev = document.createElement('button'); prev.textContent = '← 上一页'; prev.disabled = battlePage <= 1;
+  const info = document.createElement('span'); info.textContent = `第 ${battlePage} / ${totalPages} 页（共 ${sorted.length} 条）`;
+  const next = document.createElement('button'); next.textContent = '下一页 →'; next.disabled = battlePage >= totalPages;
   prev.addEventListener('click', () => { battlePage--; renderBattlesTab(); });
   next.addEventListener('click', () => { battlePage++; renderBattlesTab(); });
   pg.append(prev, info, next); header.append(h2, exportBtn, pg);
@@ -567,7 +567,7 @@ export function renderBattlesTab() {
   if (!allRows.length) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
-    p.textContent = 'No battles recorded yet — click Scrape Now after a fight.';
+    p.textContent = '尚未记录战斗，请在战斗后点击“立即同步”。';
     root.appendChild(p);
   } else {
     root.appendChild(wrap);

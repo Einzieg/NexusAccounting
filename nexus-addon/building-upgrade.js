@@ -23,10 +23,10 @@ const IMG = '/images/resources';
 // Cost resources: colony/stock field (camelCase) · dispatch cargo key (snake) ·
 // building-definition base-cost field · label · icon.
 const COST_RES = [
-  { k: 'ore',       cargo: 'ore',       base: 'baseCostOre',       label: 'Ore',       icon: 'ore.webp' },
-  { k: 'silicates', cargo: 'silicates', base: 'baseCostSilicates', label: 'Silicates', icon: 'silicates.webp' },
-  { k: 'hydrogen',  cargo: 'hydrogen',  base: 'baseCostHydrogen',  label: 'Hydrogen',  icon: 'hydrogen.webp' },
-  { k: 'alloys',    cargo: 'alloys',    base: 'baseCostAlloys',    label: 'Alloys',    icon: 'alloys.webp' },
+  { k: 'ore',       cargo: 'ore',       base: 'baseCostOre',       label: '矿石',   icon: 'ore.webp' },
+  { k: 'silicates', cargo: 'silicates', base: 'baseCostSilicates', label: '硅酸盐', icon: 'silicates.webp' },
+  { k: 'hydrogen',  cargo: 'hydrogen',  base: 'baseCostHydrogen',  label: '氢',     icon: 'hydrogen.webp' },
+  { k: 'alloys',    cargo: 'alloys',    base: 'baseCostAlloys',    label: '合金',   icon: 'alloys.webp' },
 ];
 const fmt = n => Math.round(n || 0).toLocaleString();
 
@@ -65,7 +65,7 @@ function keyFromCard(card) {
 
 async function fetchPlanet(id) {
   const r = await fetch(`/api/planets/${id}`, { credentials: 'include' });
-  if (!r.ok) throw new Error(`planet ${id} → ${r.status}`);
+  if (!r.ok) throw new Error(`星球 ${id} → ${r.status}`);
   return r.json();
 }
 
@@ -114,11 +114,11 @@ async function openPlanner(buildingKey) {
 
   const title = document.createElement('h2');
   title.style.cssText = 'margin:0 0 12px; font-size:1.2rem;';
-  title.textContent = 'Building upgrade planner';
+  title.textContent = '建筑升级规划器';
   box.appendChild(title);
 
   if (currentPlanetId == null) {
-    box.innerHTML += '<div style="color:#ff7b72;">Open a planet’s buildings first.</div>';
+    box.innerHTML += '<div style="color:#ff7b72;">请先打开一个星球的建筑页面。</div>';
     return;
   }
 
@@ -132,17 +132,17 @@ async function openPlanner(buildingKey) {
   };
 
   // Planet in view — taken from the page's current planet, not chosen by the user.
-  const pRow = row('Planet');
+  const pRow = row('星球');
   const pName = document.createElement('div');
   pName.style.cssText = 'flex:1; color:#e6edf3;';
-  pName.textContent = `Planet #${currentPlanetId}`;
+  pName.textContent = `星球 #${currentPlanetId}`;
   pRow.appendChild(pName);
 
   const info = document.createElement('div');
   info.style.cssText = 'color:#8b949e; margin:4px 0 10px; min-height:18px;';
   box.appendChild(info);
 
-  const lvlRow = row('Target level');
+  const lvlRow = row('目标等级');
   const lvlInp = document.createElement('input');
   lvlInp.type = 'text'; lvlInp.inputMode = 'numeric';   // text = no spinner arrows
   lvlInp.style.cssText = 'width:56px; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:5px 8px; border-radius:6px; text-align:right;';
@@ -155,7 +155,7 @@ async function openPlanner(buildingKey) {
   const setLvl = v => { lvlInp.value = String(v); recompute(); };
   const minus = stepBtn('−'); minus.onclick = () => setLvl((parseInt(lvlInp.value, 10) || 0) - 1);
   const plus = stepBtn('+'); plus.onclick = () => setLvl((parseInt(lvlInp.value, 10) || 0) + 1);
-  const maxBtn = stepBtn('Max'); maxBtn.onclick = () => setLvl(state ? state.def.maxLevel : lvlInp.value);
+  const maxBtn = stepBtn('最高'); maxBtn.onclick = () => setLvl(state ? state.def.maxLevel : lvlInp.value);
   lvlRow.append(minus, lvlInp, plus, maxBtn);
   const lvlHint = document.createElement('span'); lvlHint.style.cssText = 'color:#6e7681;'; lvlRow.appendChild(lvlHint);
 
@@ -166,10 +166,10 @@ async function openPlanner(buildingKey) {
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex; gap:10px; justify-content:flex-end; margin-top:14px;';
   const sendBtn = document.createElement('button');
-  sendBtn.textContent = 'Send deficit via Quartermaster';
+  sendBtn.textContent = '由军需官补齐缺口';
   sendBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #2ea043; background:#238636; color:#fff; cursor:pointer;';
   const addBtn = document.createElement('button');
-  addBtn.textContent = '➕ To-do';
+  addBtn.textContent = '➕ 待办';
   addBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer; margin-right:auto;';
   addBtn.onclick = () => {
     if (!state || !window.__nxQueue) return;
@@ -178,7 +178,7 @@ async function openPlanner(buildingKey) {
       from: state.level, target: parseInt(lvlInp.value, 10) || state.level });
   };
   const closeBtn = document.createElement('button');
-  closeBtn.textContent = 'Close';
+  closeBtn.textContent = '关闭';
   closeBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer;';
   closeBtn.onclick = closePanel;
   actions.append(addBtn, closeBtn, sendBtn);
@@ -188,22 +188,22 @@ async function openPlanner(buildingKey) {
 
   async function loadPlanet() {
     state = null; table.textContent = ''; sendBtn.disabled = true;
-    info.textContent = 'Loading…';
+    info.textContent = '加载中…';
     let d;
     try { d = await fetchPlanet(currentPlanetId); }
-    catch (e) { info.textContent = `Error: ${e.message}`; return; }
+    catch (e) { info.textContent = `错误：${e.message}`; return; }
     const pl = d.planet || d;
     if (pl.name) pName.textContent = pl.name;
     const b = findBuilding(d, buildingKey);
-    if (!b) { info.textContent = `“${buildingKey}” isn't built on this planet.`; lvlInp.disabled = true; return; }
+    if (!b) { info.textContent = `该星球尚未建造“${buildingKey}”。`; lvlInp.disabled = true; return; }
     lvlInp.disabled = false;
     const def = b.definition;
     const stock = Object.fromEntries(COST_RES.map(r => [r.k, pl[r.k] || 0]));
     state = { def, level: b.level || 0, stock };
-    info.textContent = `${def.name} · current level ${state.level} · max ${def.maxLevel}`;
+    info.textContent = `${def.name} · 当前等级 ${state.level} · 最高 ${def.maxLevel}`;
     lvlInp.max = String(def.maxLevel);
     lvlInp.value = String(Math.min(def.maxLevel, state.level + 1));
-    lvlHint.textContent = `(from ${state.level})`;
+    lvlHint.textContent = `（从 ${state.level} 级开始）`;
     recompute();
   }
 
@@ -222,9 +222,9 @@ async function openPlanner(buildingKey) {
     const head = document.createElement('div');
     head.style.cssText = cols + ' color:#8b949e; font-size:.75rem; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #30363d;';
     head.innerHTML = '<div style="padding:5px 0;"></div>' +
-      `<div style="${numCell}">Need</div>` +
-      `<div style="${numCell}">On planet</div>` +
-      `<div style="${numCell}">Deficit</div>`;
+      `<div style="${numCell}">所需</div>` +
+      `<div style="${numCell}">星球库存</div>` +
+      `<div style="${numCell}">缺口</div>`;
     table.appendChild(head);
 
     const deficit = {};
@@ -244,7 +244,7 @@ async function openPlanner(buildingKey) {
     }
     const totalShort = Object.values(deficit).reduce((s, v) => s + v, 0);
     sendBtn.disabled = totalShort <= 0;
-    sendBtn.title = totalShort <= 0 ? 'Planet already has enough' : 'Open the Quartermaster to ship the deficit here';
+    sendBtn.title = totalShort <= 0 ? '该星球已有足够资源' : '打开军需官，将缺少的资源运送到这里';
     sendBtn.onclick = () => {
       const nonZero = Object.fromEntries(Object.entries(deficit).filter(([, v]) => v > 0));
       closePanel();
@@ -282,7 +282,7 @@ function injectButtons() {
     btn.className = 'nx-upgrade-btn';
     btn.type = 'button';
     btn.textContent = '🏗️';
-    btn.title = 'Plan upgrade resources (addon)';
+    btn.title = '规划升级资源（助手）';
     btn.style.cssText = 'position:absolute; top:50%; left:0; transform:translateY(-50%);' +
       'width:26px; height:26px; padding:0;' +
       'line-height:24px; font-size:16px; border-radius:6px; border:1px solid #2ea043; background:#0d1117cc;' +

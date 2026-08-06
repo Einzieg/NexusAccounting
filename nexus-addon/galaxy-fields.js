@@ -19,13 +19,14 @@ const MAX_CYCLES = 10;
 // (Stats.txt "Mining extraction capacity"). The ship is auto-picked from the
 // field type; an Excavator in the fleet adds a whole-fleet yield bonus.
 const SHIPS = {
-  ore:         { ship: 'Mining Vessel', rate: 50 },
-  plasma:      { ship: 'Mining Vessel', rate: 25 },
-  gas:         { ship: 'Gas Collector', rate: 17 },
-  quantum:     { ship: 'Gas Collector', rate: 3 },
-  ice:         { ship: 'Ice Drill',     rate: 25 },
-  dark:        { ship: 'Ice Drill',     rate: 3 },   // field type is 'dark' (not 'dark_matter')
+  ore:         { ship: '采矿船', rate: 50 },
+  plasma:      { ship: '采矿船', rate: 25 },
+  gas:         { ship: '气体收集船', rate: 17 },
+  quantum:     { ship: '气体收集船', rate: 3 },
+  ice:         { ship: '采冰船', rate: 25 },
+  dark:        { ship: '采冰船', rate: 3 },   // field type is 'dark' (not 'dark_matter')
 };
+const FIELD_LABELS = { ore: '矿石', plasma: '等离子', gas: '气体', quantum: '量子尘', ice: '冰', dark: '暗物质' };
 const EXCAVATOR_BONUS = 1.2;   // fleet yield bonus when an Excavator is present
 
 const fieldData = new Map();   // fieldId(string) -> { remaining, richness, type }
@@ -74,11 +75,11 @@ function buildPicker(card, id) {
     localStorage.setItem('nx-excavator-' + id, exc.checked ? '1' : '0');
     paint(card);
   });
-  excLabel.append(exc, document.createTextNode('Excavator +20%'));
+  excLabel.append(exc, document.createTextNode('挖掘机 +20%'));
   box.appendChild(excLabel);
 
   const cyLabel = document.createElement('span');
-  cyLabel.textContent = 'cyc:';
+  cyLabel.textContent = '周期：';
   cyLabel.style.marginLeft = '2px';
   const btnCss = 'background:#1a1f2b;color:#ddd;border:1px solid #3a4256;border-radius:4px;' +
     'width:18px;height:18px;line-height:1;cursor:pointer;font-size:0.85rem;padding:0;';
@@ -131,8 +132,8 @@ function paint(card) {
   const r = optimalShips(data, id);
   if (!r) { el.textContent = ''; return; }
   el.textContent = r.na
-    ? `⛏ No mining ship for ${data.type}`
-    : `⛏ Optimal: ${r.ships} ${r.ship}${r.ships === 1 ? '' : 's'} to clear (${currentCycles(id)} cyc)`;
+    ? `⛏ 没有适合开采${FIELD_LABELS[data.type] || data.type}的舰船`
+    : `⛏ 最优方案：${r.ships} 艘${r.ship}，预计 ${currentCycles(id)} 个周期采完`;
 }
 
 // User toggle (persisted) to hide/show the injected mining picker + optimal line.
@@ -145,7 +146,7 @@ function applyMiningVisibility() {
   document.querySelectorAll('.nx-optimal-ships').forEach(el => { el.style.display = show ? 'block' : 'none'; });
   const btn = document.getElementById('nx-mining-toggle');
   if (btn) {
-    btn.textContent = show ? '⛏ Mining: on' : '⛏ Mining: off';
+    btn.textContent = show ? '⛏ 采矿工具：开启' : '⛏ 采矿工具：关闭';
     btn.style.opacity = '1';
     if (show) { btn.style.borderColor = '#2ea043'; btn.style.background = '#122117'; btn.style.color = '#56d364'; }
     else { btn.style.borderColor = '#6e3a3a'; btn.style.background = '#2a1a1a'; btn.style.color = '#ff7b72'; }

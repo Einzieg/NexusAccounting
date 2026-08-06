@@ -5,9 +5,9 @@
 // so "buy" filters on offerResource and "sell" on requestResource. Ratio is
 // received-per-given (offerAmount / requestAmount) — higher is a better deal.
 
-import { applySort, attachSortable, fmt } from '../common.js';
+import { applySort, attachSortable, fmt, uiLabel } from '../common.js';
 
-const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
+let iconBase = '';
 // All tradable resources, always shown as filter icons (basic first, then exotic).
 const RESOURCES = ['ore', 'silicates', 'hydrogen', 'alloys', 'cryo_ice',
   'quantum_dust', 'plasma_core', 'bio_extract', 'dark_matter', 'antimatter'];
@@ -45,7 +45,7 @@ let buyFilter = new Set(), sellFilter = new Set();   // empty = any; multi-selec
 let allianceMembers = new Set();   // userIds of your alliance — seller shown green
 export const marketSort = { key: 'rate', dir: 1 };   // cheapest cost-per-unit first
 
-const res = s => String(s || '').replace(/_/g, ' ');
+const res = s => uiLabel(s);
 
 let source = 'market';   // 'market' | 'alliance'
 
@@ -66,6 +66,7 @@ document.getElementById('m-source').addEventListener('change', e => {
 export async function initMarketTab() {
   if (inited) return;
   inited = true;
+  iconBase = `${(await globalThis.nexusStorage.getActiveServer()).origin}/images/resources/`;
   // Alliance membership colours alliance sellers green; reused across sources.
   browser.runtime.sendMessage({ type: 'GET_ALLIANCE' }).then(a => {
     allianceMembers = new Set((a && !a.error && a.memberIds) || []);
@@ -77,8 +78,8 @@ export async function initMarketTab() {
 async function loadOrders() {
   const alliance = source === 'alliance';
   const status = document.getElementById('m-progress');
-  status.textContent = `Loading ${alliance ? 'alliance trade' : 'market'} orders…`;
-  document.getElementById('m-hub-col').textContent = alliance ? 'System' : 'Hub';
+  status.textContent = `正在加载${alliance ? '联盟交易' : '市场'}订单…`;
+  document.getElementById('m-hub-col').textContent = alliance ? '星系' : '枢纽';
 
   const toOrder = (o, hub) => ({
     ...o, hub,
@@ -88,23 +89,23 @@ async function loadOrders() {
 
   if (alliance) {
     const data = await browser.runtime.sendMessage({ type: 'GET_ALLIANCE_ORDERS' });
-    if (data.error) { status.textContent = `Error: ${data.error}`; return; }
+    if (data.error) { status.textContent = `错误：${data.error}`; return; }
     orders = (data.orders || []).map(o => toOrder(o, o.systemName || `#${o.id}`));
   } else {
     const [data, hubs] = await Promise.all([
       browser.runtime.sendMessage({ type: 'GET_MARKET_ORDERS' }),
       browser.runtime.sendMessage({ type: 'GET_HUBS' }),
     ]);
-    if (data.error) { status.textContent = `Error: ${data.error}`; return; }
+    if (data.error) { status.textContent = `错误：${data.error}`; return; }
     const hubNames = {};
     for (const h of (hubs?.hubs || [])) hubNames[h.id] = h.name;
-    orders = (data.orders || []).map(o => toOrder(o, hubNames[o.hubId] || `Hub ${o.hubId}`));
+    orders = (data.orders || []).map(o => toOrder(o, hubNames[o.hubId] || `枢纽 ${o.hubId}`));
   }
 
   buyFilter.clear(); sellFilter.clear();
   drawIcons('m-buy');
   drawIcons('m-sell');
-  status.textContent = `${orders.length} open orders.`;
+  status.textContent = `${orders.length} 个未成交订单。`;
   renderMarket();
 }
 
@@ -117,7 +118,7 @@ function drawIcons(id) {
   for (const v of RESOURCES) {
     const img = document.createElement('img');
     img.className = 'res-icon' + (set.has(v) ? ' sel' : '');
-    img.src = `${ICON_BASE}${v}.webp`;
+    img.src = `${iconBase}${v}.webp`;
     img.alt = res(v);
     img.title = res(v);
     img.addEventListener('click', () => {
@@ -138,12 +139,12 @@ export function renderMarket() {
 
   const tbody = document.getElementById('m-tbody');
   tbody.textContent = '';
-  document.getElementById('m-count').textContent = `${rows.length} orders`;
+  document.getElementById('m-count').textContent = `${rows.length} 个订单`;
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 6; td.style.color = '#484f58';
-    td.textContent = orders.length ? 'No orders match these filters.' : 'No open orders.';
+    td.textContent = orders.length ? '没有符合当前筛选条件的订单。' : '当前没有未成交订单。';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
   }
@@ -155,7 +156,7 @@ export function renderMarket() {
       o.hub, o.username,
       `${fmt(o.offerRemaining ?? o.offerAmount)} ${res(o.offerResource)}`,
       `${fmt(o.requestAmount)} ${res(o.requestResource)}`,
-      `1 ${res(o.offerResource)} for ${n.toLocaleString()} ${res(o.requestResource)}`,
+      `1 ${res(o.offerResource)} 兑换 ${n.toLocaleString()} ${res(o.requestResource)}`,
       o.ratio.toFixed(3),
     ];
     const colColor = { 2: RES_COLOR[o.offerResource], 3: RES_COLOR[o.requestResource], 5: '#e3b341' };

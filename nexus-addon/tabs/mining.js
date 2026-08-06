@@ -93,13 +93,13 @@ export function renderMiningTab() {
   if (!store.mining_totals || !store.mining_totals.deliveries) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
-    p.textContent = 'No mining deliveries recorded yet.';
+    p.textContent = '尚未记录采矿运回数据。';
     delivered.appendChild(p);
   } else {
     delivered.append(
-      makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
-      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
-      makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
+      makeStatCard(`矿石${periodLabel}`, fmt(t.ore), 'ore'),
+      makeStatCard(`硅酸盐${periodLabel}`, fmt(t.silicates), 'silicates'),
+      makeStatCard(`氢${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
     );
     appendExtraResourceCards(delivered, t, periodLabel);
   }
@@ -113,12 +113,12 @@ export function renderMiningTab() {
         : 0)
     : t.stolen_total;
   ops.append(
-    makeStatCard(`Deliveries${periodLabel}`, fmt(t.deliveries), 'missions'),
-    makeStatCard(`Mining cycles${periodLabel}`, fmt(t.cycles), ''),
-    makeStatCard(`Drill breakdowns${periodLabel}`, fmt(t.drill_breakdowns), '', 'color:#e3b341'),
-    makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
-    makeStatCard(`Cargo stolen${periodLabel}`, fmt(stolenTotal), '', 'color:#ff7b72'),
-    makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('mining', getMode())), 'hydrogen'),
+    makeStatCard(`运回次数${periodLabel}`, fmt(t.deliveries), 'missions'),
+    makeStatCard(`采矿周期${periodLabel}`, fmt(t.cycles), ''),
+    makeStatCard(`钻机故障${periodLabel}`, fmt(t.drill_breakdowns), '', 'color:#e3b341'),
+    makeStatCard(`损失舰船${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+    makeStatCard(`被盗货物${periodLabel}`, fmt(stolenTotal), '', 'color:#ff7b72'),
+    makeStatCard(`燃料消耗${periodLabel}`, fmt(fuelForMode('mining', getMode())), 'hydrogen'),
   );
 
   const rl = getMiningLostForMode(mode);
@@ -131,7 +131,7 @@ export function renderMiningTab() {
   chartMiningLoot = makeResourceDoughnut('chart-mining-loot', t);
 
   if (chartMining) chartMining.destroy();
-  chartMining = makeResourceLineChart('chart-mining', getMiningSeriesForMode(mode), getLabelKey(mode), { field: 'deliveries', label: 'Deliveries' });
+  chartMining = makeResourceLineChart('chart-mining', getMiningSeriesForMode(mode), getLabelKey(mode), { field: 'deliveries', label: '运回次数' });
 
   renderMiningTable();
 }
@@ -193,14 +193,14 @@ async function fillFuelRoi(rows) {
       if (!est.error && est.fuelCost != null) fuel = est.fuelCost;
     }
     fuelCell.textContent = fuel != null ? fmt(fuel) : '—';
-    if (fuel == null) fuelCell.title = 'No fuel estimate (missing fleet/system, or no game tab open).';
+    if (fuel == null) fuelCell.title = '无法估算燃料（缺少舰队/星系信息，或未打开游戏标签页）。';
 
     const roi = mined - breakdown - (fuel || 0) * RESOURCE_WEIGHTS.hydrogen - shipLoss - stolen;
     roiCell.textContent = (roi >= 0 ? '+' : '') + fmt(roi);
     roiCell.style.color = roi >= 0 ? '#56d364' : '#ff7b72';
     roiCell.title = fuel == null
-      ? `Fuel excluded. mined ${fmt(mined)} − breakdown ${fmt(breakdown)} − ship loss ${fmt(shipLoss)} − stolen ${fmt(stolen)}`
-      : `mined ${fmt(mined)} − breakdown ${fmt(breakdown)} − fuel ${fmt(fuel * RESOURCE_WEIGHTS.hydrogen)} − ship loss ${fmt(shipLoss)} − stolen ${fmt(stolen)}`;
+      ? `未计燃料：开采 ${fmt(mined)} − 故障 ${fmt(breakdown)} − 舰船损失 ${fmt(shipLoss)} − 被盗 ${fmt(stolen)}`
+      : `开采 ${fmt(mined)} − 故障 ${fmt(breakdown)} − 燃料 ${fmt(fuel * RESOURCE_WEIGHTS.hydrogen)} − 舰船损失 ${fmt(shipLoss)} − 被盗 ${fmt(stolen)}`;
   }
 }
 

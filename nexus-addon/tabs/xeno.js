@@ -23,7 +23,7 @@ const XENO_COOLDOWN_MS = 48 * 3600 * 1000; // local cooldown after we survey a m
 // where, for both the eligibility check and the cooldown table. Pruned to
 // entries still within the cooldown window whenever loaded.
 async function loadSurveyedMoons() {
-  const { xeno_surveyed_moons } = await browser.storage.local.get('xeno_surveyed_moons');
+  const { xeno_surveyed_moons } = await globalThis.nexusStorage.get('xeno_surveyed_moons');
   const now = Date.now();
   const kept = {};
   for (const [id, entry] of Object.entries(xeno_surveyed_moons || {})) {
@@ -35,7 +35,7 @@ async function loadSurveyedMoons() {
 async function markMoonSurveyed(moonId, name, systemName, finishAt) {
   const surveyed = await loadSurveyedMoons();
   surveyed[moonId] = { at: finishAt, name, systemName };
-  await browser.storage.local.set({ xeno_surveyed_moons: surveyed });
+  await globalThis.nexusStorage.set({ xeno_surveyed_moons: surveyed });
 }
 
 // The just-launched mission for this moon, or null. Used to read its
@@ -94,7 +94,7 @@ export function renderXenoTab() {
   if (!t.missions) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
-    p.textContent = 'No ruins survey reports recorded yet.';
+    p.textContent = '尚无遗迹勘测报告。';
     el.appendChild(p);
   } else {
     // No ore/silicates/hydrogen card here — ruins-survey loot is always
@@ -102,9 +102,9 @@ export function renderXenoTab() {
     // core resources.
     appendExtraResourceCards(el, t, periodLabel);
     el.append(
-      makeStatCard(`Surveys${periodLabel}`, fmt(t.missions), 'missions'),
-      makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
-      makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('xeno', mode)), 'hydrogen'),
+      makeStatCard(`勘测次数${periodLabel}`, fmt(t.missions), 'missions'),
+      makeStatCard(`损失舰船${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+      makeStatCard(`消耗燃料${periodLabel}`, fmt(fuelForMode('xeno', mode)), 'hydrogen'),
     );
   }
 
@@ -113,7 +113,7 @@ export function renderXenoTab() {
 
   if (chartXeno) chartXeno.destroy();
   chartXeno = makeResourceLineChart('chart-xeno', getXnSeriesForMode(mode),
-    getLabelKey(mode), { field: 'missions', label: 'Surveys' });
+    getLabelKey(mode), { field: 'missions', label: '勘测' });
 
   if (chartXenoComp) chartXenoComp.destroy();
   chartXenoComp = makeResourceDoughnut('chart-xeno-comp', t);
@@ -145,10 +145,10 @@ export async function initXenoTab() {
   if (inited) return;
   inited = true;
   const status = document.getElementById('xn-progress');
-  status.textContent = 'Loading…';
+  status.textContent = '加载中…';
 
   const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
-  if (planets.error) { status.textContent = `Error: ${planets.error}`; inited = false; return; }
+  if (planets.error) { status.textContent = `错误：${planets.error}`; inited = false; return; }
   xnPlanets = (planets.planets || []).filter(p => p.systemId != null);
 
   const pSel = document.getElementById('xn-planet');
@@ -166,7 +166,7 @@ export async function initXenoTab() {
   }
 
   await refreshTemplates();
-  browser.storage.onChanged.addListener((changes, area) => {
+  globalThis.nexusStorage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.fleet_templates) refreshTemplates();
   });
 
@@ -198,7 +198,7 @@ async function refreshTemplates() {
   sel.textContent = '';
   if (!xnTemplates.length) {
     const o = document.createElement('option');
-    o.value = ''; o.textContent = '— none (create in Fleet Templates) —';
+    o.value = ''; o.textContent = '— 无（请先在舰队模板中创建）—';
     sel.appendChild(o);
   } else {
     for (const t of xnTemplates) {
@@ -214,18 +214,18 @@ async function refreshTemplates() {
 // Returns { ships, short, name, avail } or { error }.
 async function templateShips(templateId, planetId) {
   const tpl = xnTemplates.find(t => String(t.id) === templateId);
-  if (!tpl) return { error: 'No fleet template selected — create one in Fleet Templates.' };
+  if (!tpl) return { error: '尚未选择舰队模板，请先在“舰队模板”中创建。' };
   const wanted = Object.entries(tpl.ships || {})
     .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
     .filter(s => s.quantity > 0);
-  if (!wanted.length) return { error: `Template "${tpl.name}" has no ships.` };
+  if (!wanted.length) return { error: `模板“${tpl.name}”中没有舰船。` };
 
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) return { error: av.error };
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
-  if (!ships.length) return { error: `None of template "${tpl.name}"'s ships are on this planet.` };
+  if (!ships.length) return { error: `该星球没有模板“${tpl.name}”中的舰船。` };
   return { ships, short: wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity), name: tpl.name };
 }
 
@@ -238,7 +238,7 @@ async function updateAvail() {
     browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
   ]);
   if (av.error) { clearAvailStrip(box, av.error); return; }
-  renderAvailStrip(box, defs.ships || [], av.available, 'No ships on this planet.');
+  renderAvailStrip(box, defs.ships || [], av.available, '该星球没有舰船。');
 }
 
 async function loadMap() {
@@ -256,7 +256,7 @@ async function refreshMissions() {
   const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
   if (mi.error) return;
   if (mi.maxFleetSlots != null) {
-    document.getElementById('xn-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
+    document.getElementById('xn-slots').textContent = `舰队槽位 ${(mi.missions || []).length}/${mi.maxFleetSlots}`;
   }
   xnMissions = (mi.missions || []).filter(m => m.missionType === 'xeno_survey');
   renderTransit();
@@ -266,11 +266,11 @@ function renderTransit() {
   const box = document.getElementById('xn-transit-list');
   box.textContent = '';
   xnTicks = [];
-  document.getElementById('xn-transit-count').textContent = `${xnMissions.length} in flight`;
+  document.getElementById('xn-transit-count').textContent = `${xnMissions.length} 支执行中`;
   if (!xnMissions.length) {
     const d = document.createElement('div');
     d.style.cssText = 'color:#484f58; padding:4px 0;';
-    d.textContent = 'No ruins surveys in transit.';
+    d.textContent = '当前没有执行中的遗迹勘测。';
     box.appendChild(d);
     return;
   }
@@ -281,7 +281,7 @@ function renderTransit() {
     head.style.cssText = 'display:flex; align-items:baseline; gap:8px; font-size:0.85rem; margin-bottom:3px;';
     const name = document.createElement('span');
     name.style.color = '#e6edf3';
-    name.textContent = `${target} · Ruins Survey`;
+    name.textContent = `${target} · 遗迹勘测`;
     head.appendChild(name);
     const bar = makeMissionBar(m);
     bar.el.style.marginTop = '0';
@@ -299,13 +299,13 @@ async function renderCooldownTable() {
   const rows = Object.entries(surveyed)
     .map(([id, entry]) => ({ id, ...entry, endsAt: entry.at + XENO_COOLDOWN_MS }))
     .sort((a, b) => a.endsAt - b.endsAt);
-  document.getElementById('xn-cooldown-count').textContent = `${rows.length} on cooldown`;
+  document.getElementById('xn-cooldown-count').textContent = `${rows.length} 个月球冷却中`;
   tbody.textContent = '';
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 3; td.style.color = '#484f58';
-    td.textContent = 'No moons on cooldown.';
+    td.textContent = '当前没有处于冷却期的月球。';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
   }
@@ -329,7 +329,7 @@ async function findNearestAncientMoon(src, srcSystemId, targetedMoonIds, surveye
     .sort((a, b) => a.d - b.d)
     .slice(0, 500);
 
-  const { planet_scan_cache } = await browser.storage.local.get('planet_scan_cache');
+  const { planet_scan_cache } = await globalThis.nexusStorage.get('planet_scan_cache');
   const cache = planet_scan_cache || {};
 
   let scanned = 0;
@@ -355,7 +355,7 @@ async function findNearestAncientMoon(src, srcSystemId, targetedMoonIds, surveye
         .slice(0, ids.length - SCAN_CACHE_MAX)
         .forEach(id => delete cache[id]);
     }
-    await browser.storage.local.set({ planet_scan_cache: cache });
+    await globalThis.nexusStorage.set({ planet_scan_cache: cache });
   }
   return null;
 }
@@ -369,11 +369,11 @@ async function launchRuinsSurvey() {
   const planet = xnPlanets.find(p => p.id === planetId);
   if (!planet) return;
 
-  status.textContent = 'Loading galaxy map…';
+  status.textContent = '正在加载星系地图…';
   let map;
-  try { map = await loadMap(); } catch (e) { status.textContent = `Error: ${e.message}`; return; }
+  try { map = await loadMap(); } catch (e) { status.textContent = `错误：${e.message}`; return; }
   const src = map.byId[planet.systemId];
-  if (!src) { status.textContent = 'Source system not on the map.'; return; }
+  if (!src) { status.textContent = '地图中找不到出发星系。'; return; }
 
   const [mi, surveyedMoons] = await Promise.all([
     browser.runtime.sendMessage({ type: 'GET_MISSIONS' }),
@@ -385,31 +385,31 @@ async function launchRuinsSurvey() {
     .filter(id => id != null));
 
   xnRunning = true;
-  btn.textContent = 'Stop';
-  status.textContent = 'Scanning for the nearest Ancient moon…';
+  btn.textContent = '停止';
+  status.textContent = '正在查找最近的远古月球…';
   let found;
   try {
     found = await findNearestAncientMoon(src, planet.systemId, targetedMoonIds, surveyedMoons,
-      (scanned, total) => { status.textContent = `Scanning… ${scanned}/${total} systems.`; });
+      (scanned, total) => { status.textContent = `扫描中… ${scanned}/${total} 个星系。`; });
   } finally {
     xnRunning = false;
-    btn.textContent = 'Launch Ruins Survey';
+    btn.textContent = '发起遗迹勘测';
   }
-  if (!found) { status.textContent = 'No unclaimed Ancient moon found nearby.'; return; }
+  if (!found) { status.textContent = '附近没有可勘测的无主远古月球。'; return; }
 
   const r = await templateShips(document.getElementById('xn-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
   const sysName = found.system.name || `#${found.system.id}`;
-  if (!await confirmDialog(`Launch ruins survey?\n\nTarget: ${found.moon.name} (${sysName}, ${found.distance} away)\n` +
-    `From: ${planet.name}\nTemplate: ${r.name}` +
-    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
+  if (!await confirmDialog(`发起遗迹勘测？\n\n目标：${found.moon.name}（${sysName}，距离 ${found.distance}）\n` +
+    `出发地：${planet.name}\n模板：${r.name}` +
+    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''), r.ships)) return;
 
-  status.textContent = `Launching survey to ${found.moon.name}…`;
+  status.textContent = `正在向 ${found.moon.name} 发起勘测…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_XENO_SURVEY', sourcePlanetId: planetId, targetMoonId: found.moon.id, ships: r.ships,
   });
-  if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
-  status.textContent = `Fleet sent to ${found.moon.name} ✓`;
+  if (res.error) { status.textContent = `发起失败：${res.error}`; return; }
+  status.textContent = `舰队已派往 ${found.moon.name} ✓`;
   updateAvail();
   refreshMissions();
 

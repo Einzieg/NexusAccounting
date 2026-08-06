@@ -29,7 +29,10 @@ const BASE_RES = [
   { field: 'costAlloys',    cargo: 'alloys' },
 ];
 const fmt = n => Math.round(n || 0).toLocaleString();
-const labelOf = cargo => cargo.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const RES_LABELS = { ore: '矿石', silicates: '硅酸盐', hydrogen: '氢', alloys: '合金',
+  cryo_ice: '低温冰', quantum_dust: '量子尘', plasma_core: '等离子核心',
+  bio_extract: '生物提取物', dark_matter: '暗物质', antimatter: '反物质' };
+const labelOf = cargo => RES_LABELS[cargo] || cargo.replace(/_/g, ' ');
 
 // Cumulative cost to research from `fromLevel` (exclusive) to `toLevel`
 // (inclusive). Returns { cargoKey: amount } in dispatch (snake) keys.
@@ -110,7 +113,7 @@ async function openPlanner(techKey) {
 
   const title = document.createElement('h2');
   title.style.cssText = 'margin:0 0 12px; font-size:1.2rem;';
-  title.textContent = 'Technology upgrade planner';
+  title.textContent = '科技升级规划器';
   box.appendChild(title);
 
   const row = (labelText) => {
@@ -123,7 +126,7 @@ async function openPlanner(techKey) {
   };
 
   // Destination planet — where the research will run (its stock funds it).
-  const pRow = row('Research on');
+  const pRow = row('研究星球');
   const pSel = document.createElement('select');
   pSel.style.cssText = 'flex:1; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:5px 8px; border-radius:6px;';
   pRow.appendChild(pSel);
@@ -132,7 +135,7 @@ async function openPlanner(techKey) {
   info.style.cssText = 'color:#8b949e; margin:4px 0 10px; min-height:18px;';
   box.appendChild(info);
 
-  const lvlRow = row('Target level');
+  const lvlRow = row('目标等级');
   const lvlInp = document.createElement('input');
   lvlInp.type = 'text'; lvlInp.inputMode = 'numeric';   // text = no spinner arrows
   lvlInp.style.cssText = 'width:56px; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:5px 8px; border-radius:6px; text-align:right;';
@@ -145,7 +148,7 @@ async function openPlanner(techKey) {
   const setLvl = v => { lvlInp.value = String(v); recompute(); };
   const minus = stepBtn('−'); minus.onclick = () => setLvl((parseInt(lvlInp.value, 10) || 0) - 1);
   const plus = stepBtn('+'); plus.onclick = () => setLvl((parseInt(lvlInp.value, 10) || 0) + 1);
-  const maxBtn = stepBtn('Max'); maxBtn.onclick = () => setLvl(tech ? tech.maxLevel : lvlInp.value);
+  const maxBtn = stepBtn('最高'); maxBtn.onclick = () => setLvl(tech ? tech.maxLevel : lvlInp.value);
   lvlRow.append(minus, lvlInp, plus, maxBtn);
   const lvlHint = document.createElement('span'); lvlHint.style.cssText = 'color:#6e7681;'; lvlRow.appendChild(lvlHint);
 
@@ -156,10 +159,10 @@ async function openPlanner(techKey) {
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex; gap:10px; justify-content:flex-end; margin-top:14px;';
   const sendBtn = document.createElement('button');
-  sendBtn.textContent = 'Send deficit via Quartermaster';
+  sendBtn.textContent = '由军需官补齐缺口';
   sendBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #1f6feb; background:#1f6feb; color:#fff; cursor:pointer;';
   const addBtn = document.createElement('button');
-  addBtn.textContent = '➕ To-do';
+  addBtn.textContent = '➕ 待办';
   addBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer; margin-right:auto;';
   addBtn.onclick = () => {
     if (!tech || !window.__nxQueue) return;
@@ -168,7 +171,7 @@ async function openPlanner(techKey) {
       from: tech.level || 0, target: parseInt(lvlInp.value, 10) || (tech.level || 0) });
   };
   const closeBtn = document.createElement('button');
-  closeBtn.textContent = 'Close';
+  closeBtn.textContent = '关闭';
   closeBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer;';
   closeBtn.onclick = closePanel;
   actions.append(addBtn, closeBtn, sendBtn);
@@ -179,7 +182,7 @@ async function openPlanner(techKey) {
   let destId = null;
 
   // Load planet list + the (global) research data once.
-  info.textContent = 'Loading…';
+  info.textContent = '加载中…';
   let planets;
   try {
     const [pd, rd] = await Promise.all([
@@ -187,13 +190,13 @@ async function openPlanner(techKey) {
       // Research is account-global; any planetId returns the same defs/levels.
       currentPlanetId != null ? fetchJSON(`/api/research?planetId=${currentPlanetId}`) : null,
     ]);
-    planets = (pd.planets || []).map(p => ({ id: p.id, name: p.name || `Planet #${p.id}` }));
-    if (!planets.length) { info.textContent = 'No planets found.'; return; }
+    planets = (pd.planets || []).map(p => ({ id: p.id, name: p.name || `星球 #${p.id}` }));
+    if (!planets.length) { info.textContent = '未找到星球。'; return; }
     // If we couldn't fetch research yet (no planet in view), fetch via planet 1.
     const research = (rd || await fetchJSON(`/api/research?planetId=${planets[0].id}`)).research || [];
     tech = findTech(research, techKey);
-    if (!tech) { info.textContent = `“${techKey}” isn't a known technology.`; return; }
-  } catch (e) { info.textContent = `Error: ${e.message}`; return; }
+    if (!tech) { info.textContent = `无法识别科技“${techKey}”。`; return; }
+  } catch (e) { info.textContent = `错误：${e.message}`; return; }
 
   for (const p of planets) {
     const o = document.createElement('option');
@@ -203,17 +206,17 @@ async function openPlanner(techKey) {
   destId = planets.some(p => p.id === currentPlanetId) ? currentPlanetId : planets[0].id;
   pSel.value = String(destId);
 
-  info.textContent = `${tech.name} · current level ${tech.level || 0} · max ${tech.maxLevel}`;
+  info.textContent = `${tech.name} · 当前等级 ${tech.level || 0} · 最高 ${tech.maxLevel}`;
   lvlInp.value = String(Math.min(tech.maxLevel, (tech.level || 0) + 1));
-  lvlHint.textContent = `(from ${tech.level || 0})`;
+  lvlHint.textContent = `（从 ${tech.level || 0} 级开始）`;
 
   async function loadStock() {
-    stock = null; sendBtn.disabled = true; table.textContent = 'Loading planet stock…';
+    stock = null; sendBtn.disabled = true; table.textContent = '正在加载星球库存…';
     try {
       const d = await fetchJSON(`/api/planets/${destId}`);
       const pl = d.planet || d;
       stock = pl;
-    } catch (e) { table.textContent = `Error: ${e.message}`; return; }
+    } catch (e) { table.textContent = `错误：${e.message}`; return; }
     recompute();
   }
 
@@ -230,9 +233,9 @@ async function openPlanner(techKey) {
     const head = document.createElement('div');
     head.style.cssText = cols + ' color:#8b949e; font-size:.75rem; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #30363d;';
     head.innerHTML = '<div style="padding:5px 0;"></div>' +
-      `<div style="${numCell}">Need</div>` +
-      `<div style="${numCell}">On planet</div>` +
-      `<div style="${numCell}">Deficit</div>`;
+      `<div style="${numCell}">所需</div>` +
+      `<div style="${numCell}">星球库存</div>` +
+      `<div style="${numCell}">缺口</div>`;
     table.appendChild(head);
 
     const deficit = {};
@@ -252,7 +255,7 @@ async function openPlanner(techKey) {
     }
     const totalShort = Object.values(deficit).reduce((s, v) => s + v, 0);
     sendBtn.disabled = totalShort <= 0;
-    sendBtn.title = totalShort <= 0 ? 'Destination planet already has enough' : 'Ship the deficit to the destination planet';
+    sendBtn.title = totalShort <= 0 ? '目标星球已有足够资源' : '将缺少的资源运送到目标星球';
     sendBtn.onclick = () => {
       const nonZero = Object.fromEntries(Object.entries(deficit).filter(([, v]) => v > 0));
       closePanel();
@@ -291,7 +294,7 @@ function injectButtons() {
     btn.className = 'nx-tech-btn';
     btn.type = 'button';
     btn.textContent = '🔬';
-    btn.title = 'Plan research resources (addon)';
+    btn.title = '规划研究资源（助手）';
     btn.style.cssText = 'position:absolute; top:50%; left:0; transform:translateY(-50%);' +
       'width:26px; height:26px; padding:0;' +
       'line-height:24px; font-size:16px; border-radius:6px; border:1px solid #1f6feb; background:#0d1117cc;' +

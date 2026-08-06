@@ -51,8 +51,8 @@ export async function confirmDialog(message, ships) {
       b.style.cssText = `padding:7px 16px;border-radius:6px;border:1px solid #39405a;cursor:pointer;${primary ? 'background:#3b82f6;color:#fff;border-color:#3b82f6' : 'background:#2a3146;color:#e6e8ee'}`;
       return b;
     };
-    const cancel = mk('Cancel', false);
-    const ok = mk('Confirm', true);
+    const cancel = mk('取消', false);
+    const ok = mk('确认', true);
     const done = (v) => { ov.remove(); resolve(v); };
     cancel.onclick = () => done(false);
     ok.onclick = () => done(true);
@@ -110,7 +110,7 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
     const box = document.createElement('div');
     box.style.cssText = 'background:#1b2030;color:#e6e8ee;border:1px solid #39405a;border-radius:8px;max-width:420px;width:90%;padding:20px;font:14px/1.5 system-ui,sans-serif';
     const h = document.createElement('div');
-    h.textContent = title || 'Edit fleet';
+    h.textContent = title || '编辑舰队';
     h.style.cssText = 'font-weight:600;margin-bottom:2px';
     box.append(h);
     if (subtitle) {
@@ -123,7 +123,7 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
     const rows = document.createElement('div');
     rows.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto;margin-top:8px';
     if (!ids.length) {
-      rows.textContent = 'No ships available on the source planet.';
+      rows.textContent = '出发星球上没有可用舰船。';
       rows.style.color = '#8b949e';
     }
     const ok = document.createElement('button');   // declared early for refresh()
@@ -168,8 +168,8 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
       b.style.cssText = `padding:7px 16px;border-radius:6px;border:1px solid #39405a;cursor:pointer;${primary ? 'background:#238636;color:#fff;border-color:#2ea043' : 'background:#2a3146;color:#e6e8ee'}`;
       return b;
     };
-    const cancel = mk(document.createElement('button'), 'Cancel', false);
-    mk(ok, 'Send', true);
+    const cancel = mk(document.createElement('button'), '取消', false);
+    mk(ok, '派出', true);
     const done = (v) => { ov.remove(); resolve(v); };
     cancel.onclick = () => done(null);
     ok.onclick = () => done(effective());
@@ -177,8 +177,8 @@ export async function editFleetDialog({ title, subtitle = '', avail = {}, seed =
     refresh();
     if (recShips.length) {
       const opt = document.createElement('button');
-      opt.textContent = 'Optimise Mining Fleet';
-      opt.title = 'Set the recommended count for mining ships only — escort/combat ships untouched';
+      opt.textContent = '优化采矿舰队';
+      opt.title = '只将采矿舰船调整为推荐数量，不改动护航或战斗舰船';
       opt.style.cssText = 'padding:7px 16px;border-radius:6px;border:1px solid #1f6feb;background:#1f6feb;color:#fff;cursor:pointer;margin-right:auto';
       opt.onclick = () => {
         for (const id of miningShipIds || []) {
@@ -265,7 +265,7 @@ export function infoDialog(title, body) {
   const btns = document.createElement('div');
   btns.style.cssText = 'margin-top:18px;display:flex;justify-content:flex-end';
   const ok = document.createElement('button');
-  ok.textContent = 'Got it';
+  ok.textContent = '知道了';
   ok.style.cssText = 'padding:7px 16px;border-radius:6px;border:1px solid #3b82f6;background:#3b82f6;color:#fff;cursor:pointer';
   ok.onclick = () => ov.remove();
   ov.onclick = (e) => { if (e.target === ov) ov.remove(); };
@@ -311,7 +311,7 @@ export function renderAvailStrip(box, ships, available, emptyMsg) {
   box.dataset.availSig = sig;
   box.textContent = '';
   const label = document.createElement('span');
-  label.textContent = here.length ? 'On this planet:' : emptyMsg;
+  label.textContent = here.length ? '该星球拥有：' : emptyMsg;
   box.appendChild(label);
   for (const s of here) {
     const chip = document.createElement('span');
@@ -330,34 +330,76 @@ export function renderAvailStrip(box, ships, available, emptyMsg) {
 
 // Remember template-dropdown choices (by element id) across tabs and sessions.
 export async function rememberedSelections() {
-  const { template_selections } = await browser.storage.local.get('template_selections');
+  const { template_selections } = await globalThis.nexusStorage.get('template_selections');
   return template_selections || {};
 }
 export async function rememberSelection(id, value) {
   const cur = await rememberedSelections();
   cur[id] = value;
-  await browser.storage.local.set({ template_selections: cur });
+  await globalThis.nexusStorage.set({ template_selections: cur });
 }
 
 export function fmt(n) {
   return n == null ? '0' : Number(n).toLocaleString();
 }
 
+// Translate stable game enum values for display without changing the values
+// used by APIs, filters, storage, or calculations.
+const UI_LABELS = Object.freeze({
+  ore: '矿石', silicates: '硅酸盐', hydrogen: '氢', alloys: '合金',
+  cryo_ice: '低温冰', ice: '冰', quantum_dust: '量子尘', plasma_core: '等离子核心',
+  bio_extract: '生物提取物', dark_matter: '暗物质', antimatter: '反物质',
+  precursor_fragments: '先驱碎片', artifact: '遗物',
+  sentinel: '哨兵区', open: '开放区', dead: '死亡区', rift: '裂隙区', unknown: '未知',
+  unknown_target: '未知目标',
+  resource_cache: '资源储藏点', rogue_drone: '失控无人机', pirate_base: '海盗基地',
+  ruins_survey_complete: '遗迹勘测完成', empty: '空无一物', ambush: '伏击',
+  attacker_won: '进攻方胜利', defender_won: '防守方胜利', defender_held: '防守方坚守',
+  mutual_destruction: '同归于尽', victory: '胜利', defeat: '失败', won: '胜利', lost: '失败',
+  success: '成功', failed: '失败', draw: '平局', stalemate: '僵局',
+  military: '军事', science: '科学', economy: '经济',
+  maxed: '已满级', researched: '已研究', researching: '研究中', available: '可用', locked: '未解锁',
+  active: '进行中', completed: '已完成', in_progress: '进行中', pending: '等待中',
+  outbound: '出航中', en_route: '航行中', returning: '返航中', arrived: '已抵达', cancelled: '已取消',
+  ancient: '远古型', barren: '荒芜型', crystalline: '晶体型', frozen: '冰封型', gas: '气态型',
+  gas_giant: '气态巨行星', hollow: '空心型', icy: '冰冻型', metallic: '金属型', oceanic: '海洋型',
+  rocky: '岩石型', terra: '类地型', volcanic: '火山型', arid: '干旱型', desert: '沙漠型',
+  toxic: '剧毒型', tundra: '苔原型',
+  survey: '勘测', investigate: '调查', collect_debris: '回收残骸', collect_salvage: '回收残余物',
+  expedition: '远征', pirate: '海盗', mining: '采矿', mine: '采矿', debris: '残骸', xeno: '异星遗迹',
+  xeno_survey: '遗迹勘测', spy: '间谍侦察', attack: '攻击', raid: '突袭', camp_scout: '营地侦察',
+  deliver: '运送', transfer: '转移',
+  kinetic: '动能', laser: '激光', plasma: '等离子', missile: '导弹', ion: '离子',
+  light: '轻型装甲', medium: '中型装甲', heavy: '重型装甲',
+  combat: '战斗', special: '特殊', recon: '侦察', utility: '通用', bomber: '轰炸机',
+  missile_defense: '导弹防御阵列', laser_defense: '激光防御阵列', railgun_defense: '轨道炮防御阵列',
+  plasma_defense: '等离子防御阵列', ion_defense: '离子防御阵列', ew_system: '电子战系统',
+  low: '少量', medium_amount: '中等', high: '大量', very_low: '极少', very_high: '极多', none: '无',
+});
+
+export function uiLabel(value) {
+  const raw = String(value ?? '');
+  if (/^Wormhole #\d+$/i.test(raw)) return raw.replace(/^Wormhole/i, '虫洞');
+  if (/^System #\d+$/i.test(raw)) return raw.replace(/^System/i, '星系');
+  const key = raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return UI_LABELS[key] || raw.replace(/_/g, ' ');
+}
+
 // ── In-flight mission progress bars ─────────────────────────────────────────
 // Shared by any tab that lists fleets in transit (Scouting, Expeditions, …).
 
 export function fmtCountdown(ms) {
-  if (ms <= 0) return 'expired';
+  if (ms <= 0) return '已到期';
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   const pad = n => String(n).padStart(2, '0');
-  if (h) return `${h}h ${pad(m)}m ${pad(sec)}s`;
-  if (m) return `${m}m ${pad(sec)}s`;
-  return `${sec}s`;
+  if (h) return `${h}时 ${pad(m)}分 ${pad(sec)}秒`;
+  if (m) return `${m}分 ${pad(sec)}秒`;
+  return `${sec}秒`;
 }
 
-const MISSION_WORK_LABEL = { survey: 'Surveying', investigate: 'Investigating',
-  collect_debris: 'Collecting', collect_salvage: 'Collecting', expedition: 'Exploring' };
+const MISSION_WORK_LABEL = { survey: '正在勘测', investigate: '正在调查',
+  collect_debris: '正在回收', collect_salvage: '正在回收', expedition: '正在探索' };
 
 // Where a fleet is in its round trip: outbound (departs→arrives), on-site work
 // (arrives→returnDeparts), or returning (returnDeparts→returnArrives). Returns
@@ -367,15 +409,15 @@ export function missionProgress(m) {
   const now = Date.now();
   const dep = g('departsAt') ?? g('createdAt'), arr = g('arrivesAt');
   const rdep = g('returnDepartsAt'), rarr = g('returnArrivesAt');
-  const work = MISSION_WORK_LABEL[m.missionType] || 'Working';
+  const work = MISSION_WORK_LABEL[m.missionType] || '正在执行';
   const stages = [];
-  if (dep && arr) stages.push(['En route', '#58a6ff', dep, arr]);
+  if (dep && arr) stages.push(['航行中', '#58a6ff', dep, arr]);
   if (arr && rdep) stages.push([work, '#f0883e', arr, rdep]);
-  if (rdep && rarr) stages.push(['Returning', '#56d364', rdep, rarr]);
+  if (rdep && rarr) stages.push(['返航中', '#56d364', rdep, rarr]);
   for (const [label, color, s, e] of stages) {
     if (now < e) return { label, color, frac: now <= s ? 0 : Math.min(1, (now - s) / (e - s)), eta: e - now };
   }
-  return { label: 'Arriving…', color: '#8b949e', frac: 1, eta: 0 };
+  return { label: '即将抵达…', color: '#8b949e', frac: 1, eta: 0 };
 }
 
 // Compact inline progress bar for a table cell or transit-list row. Returns
@@ -497,7 +539,7 @@ export function periodLabelFor(mode) {
   const { from, to } = getWindowRange();
   if (!from && !to) return '';
   if (from && to) return from === to ? ` (${shortDate(from)})` : ` (${shortDate(from)}–${shortDate(to)})`;
-  return from ? ` (from ${shortDate(from)})` : ` (to ${shortDate(to)})`;
+  return from ? `（自 ${shortDate(from)}）` : `（截至 ${shortDate(to)}）`;
 }
 
 // ── Shared per-tab helpers ─────────────────────────────────────────────────
@@ -553,17 +595,17 @@ export function computeSeries(reports, mode, fieldGetters) {
 }
 
 export const RESOURCE_SERIES = [
-  { field: 'ore',          label: 'Ore',          color: '#f0883e' },
-  { field: 'silicates',    label: 'Silicates',    color: '#56d364' },
-  { field: 'hydrogen',     label: 'Hydrogen',     color: '#79c0ff' },
-  { field: 'alloys',       label: 'Alloys',       color: '#e3b341' },
-  { field: 'cryo_ice',     label: 'Cryo-Ice',     color: '#a5d6ff' },
-  { field: 'quantum_dust', label: 'Quantum Dust', color: '#bc8cff' },
-  { field: 'plasma_core',  label: 'Plasma Core',  color: '#ff7b72' },
-  { field: 'dark_matter',  label: 'Dark Matter',  color: '#d2a8ff' },
-  { field: 'antimatter',   label: 'Antimatter',   color: '#ffa657' },
-  { field: 'precursor_fragments', label: 'Precursor Fragments', color: '#7ee787' },
-  { field: 'artifact',            label: 'Artifact',            color: '#d29922' },
+  { field: 'ore',          label: '矿石',       color: '#f0883e' },
+  { field: 'silicates',    label: '硅酸盐',     color: '#56d364' },
+  { field: 'hydrogen',     label: '氢',         color: '#79c0ff' },
+  { field: 'alloys',       label: '合金',       color: '#e3b341' },
+  { field: 'cryo_ice',     label: '低温冰',     color: '#a5d6ff' },
+  { field: 'quantum_dust', label: '量子尘',     color: '#bc8cff' },
+  { field: 'plasma_core',  label: '等离子核心', color: '#ff7b72' },
+  { field: 'dark_matter',  label: '暗物质',     color: '#d2a8ff' },
+  { field: 'antimatter',   label: '反物质',     color: '#ffa657' },
+  { field: 'precursor_fragments', label: '先驱碎片', color: '#7ee787' },
+  { field: 'artifact',            label: '遗物',     color: '#d29922' },
 ];
 
 // fieldGetters covering every chartable resource, for computeSeries.
@@ -738,14 +780,14 @@ export function zeroCell(v) {
 // Alloys + exotic resources, shown as their own collected cards. Values may be
 // stored flat on totals or inside a `rare` map; read either.
 export const EXTRA_RESOURCES = [
-  ['alloys', 'Alloys', 'alloys'],
-  ['cryo_ice', 'Cryo-Ice', 'hydrogen'],
-  ['quantum_dust', 'Quantum Dust', 'rare'],
-  ['plasma_core', 'Plasma Core', 'rare'],
-  ['dark_matter', 'Dark Matter', 'rare'],
-  ['antimatter', 'Antimatter', 'rare'],
-  ['precursor_fragments', 'Precursor Fragments', 'rare'],
-  ['artifact', 'Artifact', 'rare'],
+  ['alloys', '合金', 'alloys'],
+  ['cryo_ice', '低温冰', 'hydrogen'],
+  ['quantum_dust', '量子尘', 'rare'],
+  ['plasma_core', '等离子核心', 'rare'],
+  ['dark_matter', '暗物质', 'rare'],
+  ['antimatter', '反物质', 'rare'],
+  ['precursor_fragments', '先驱碎片', 'rare'],
+  ['artifact', '遗物', 'rare'],
 ];
 
 export const EXTRA_RES_KEYS_UI = EXTRA_RESOURCES.map(e => e[0]);
@@ -768,7 +810,7 @@ export function appendRareCards(container, rare, suffix) {
   Object.entries(rare || {})
     .sort((a, b) => b[1] - a[1])
     .forEach(([k, v]) => container.appendChild(
-      makeStatCard(`${k.replace(/_/g, ' ')}${suffix}`, fmt(v), 'rare')
+      makeStatCard(`${uiLabel(k)}${suffix}`, fmt(v), 'rare')
     ));
 }
 
@@ -776,7 +818,7 @@ export function renderPagedTable(reports, page, infoId, prevId, nextId, tbodyId,
   const totalPages = Math.ceil(reports.length / PER_PAGE);
   const maxPage = Math.max(1, totalPages);
   const safePage = Math.min(Math.max(1, page), maxPage);
-  document.getElementById(infoId).textContent = `Page ${safePage} / ${maxPage} (${reports.length} total)`;
+  document.getElementById(infoId).textContent = `第 ${safePage} / ${maxPage} 页（共 ${reports.length} 条）`;
   document.getElementById(prevId).disabled = safePage <= 1;
   document.getElementById(nextId).disabled = safePage >= totalPages;
   const tbody = document.getElementById(tbodyId);
@@ -793,10 +835,10 @@ export function fillResourceCards(containerId, res, suffix) {
   res = res || emptyResources();
   el.textContent = '';
   el.append(
-    makeStatCard(`Ore${suffix}`, fmt(res.ore || 0), 'ore'),
-    makeStatCard(`Silicates${suffix}`, fmt(res.silicates || 0), 'silicates'),
-    makeStatCard(`Hydrogen${suffix}`, fmt(res.hydrogen || 0), 'hydrogen'),
-    makeStatCard(`Alloys${suffix}`, fmt(res.alloys || 0), 'alloys'),
+    makeStatCard(`矿石${suffix}`, fmt(res.ore || 0), 'ore'),
+    makeStatCard(`硅酸盐${suffix}`, fmt(res.silicates || 0), 'silicates'),
+    makeStatCard(`氢${suffix}`, fmt(res.hydrogen || 0), 'hydrogen'),
+    makeStatCard(`合金${suffix}`, fmt(res.alloys || 0), 'alloys'),
   );
   appendRareCards(el, res.rare, suffix);
 }
@@ -825,14 +867,14 @@ export function renderNetCards(containerId, collected, lost, periodLabel, fuelHy
   const cost = combinedLost(lost);   // destruction + repair
   const fuel = fuelHydrogen || 0;
   const fields = [
-    ['Ore', 'ore'], ['Silicates', 'silicates'], ['Hydrogen', 'hydrogen'], ['Alloys', 'alloys'],
+    ['矿石', 'ore'], ['硅酸盐', 'silicates'], ['氢', 'hydrogen'], ['合金', 'alloys'],
   ];
   let total = 0;
   for (const [label, key] of fields) {
     let v = (collected[key] || 0) - (cost[key] || 0);
     if (key === 'hydrogen') v -= fuel;   // fuel is hydrogen burned on the trip
     total += v * RESOURCE_WEIGHTS[key];
-    el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), key));
+    el.appendChild(makeStatCard(`${label}净收益${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), key));
   }
   // Exotic resources — net (collected − any rare ship-cost), weighted per
   // RESOURCE_WEIGHTS (falling back to RARE_WEIGHT). Shown when present either side.
@@ -843,12 +885,12 @@ export function renderNetCards(containerId, collected, lost, periodLabel, fuelHy
     if (!got && !spent) continue;
     const v = got - spent;
     total += v * (RESOURCE_WEIGHTS[key] || RARE_WEIGHT);
-    el.appendChild(makeStatCard(`${label} net${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), cls));
+    el.appendChild(makeStatCard(`${label}净收益${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), cls));
   }
-  const totalCard = makeStatCard(`Total net${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
+  const totalCard = makeStatCard(`总净收益${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  totalCard.title = 'Weighted: ore×1, silicates×2, hydrogen×3, alloys×5, precursor fragments×50, artifacts×2000, other exotics×10.'
-    + (fuel ? ` Includes ${fmt(fuel)} hydrogen fuel (est.).` : '');
+  totalCard.title = '加权：矿石×1、硅酸盐×2、氢×3、合金×5、先驱碎片×50、遗物×2000、其他稀有资源×10。'
+    + (fuel ? ` 已计入约 ${fmt(fuel)} 氢燃料。` : '');
   el.appendChild(totalCard);
 }
 
@@ -863,11 +905,11 @@ export const RARE_PALETTE = ['#bc8cff', '#d2a8ff', '#ff7b72', '#ffa657', '#a5d6f
 export function makeResourceDoughnut(canvasId, totals) {
   const entries = [];
   for (const k of ['ore', 'silicates', 'hydrogen', 'alloys']) {
-    if (totals[k] > 0) entries.push([k, totals[k], RESOURCE_COLORS[k]]);
+    if (totals[k] > 0) entries.push([uiLabel(k), totals[k], RESOURCE_COLORS[k]]);
   }
   let ri = 0;
   for (const [k, v] of Object.entries(totals.rare || {})) {
-    if (v > 0) entries.push([k.replace(/_/g, ' '), v, RARE_PALETTE[ri++ % RARE_PALETTE.length]]);
+    if (v > 0) entries.push([uiLabel(k), v, RARE_PALETTE[ri++ % RARE_PALETTE.length]]);
   }
   const total = entries.reduce((s, e) => s + e[1], 0);
   return new Chart(document.getElementById(canvasId), {
@@ -905,7 +947,7 @@ export function zoneCell(zone) {
   const td = document.createElement('td');
   const badge = document.createElement('span');
   badge.className = 'badge';
-  badge.textContent = z;
+  badge.textContent = uiLabel(z);
   badge.style.color = ZONE_COLORS[z] || ZONE_COLORS.unknown;
   td.appendChild(badge);
   return td;

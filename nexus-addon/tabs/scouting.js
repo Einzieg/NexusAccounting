@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, store } from '../common.js';
+import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, store, uiLabel } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -28,8 +28,8 @@ let scMissions = [];          // in-flight survey/investigate/collect fleets
 // all of them. Keyed so one render doesn't drop another surface's tickers.
 const scTicks = { scan: [], invest: [], debris: [], salvage: [] };
 
-const MISSION_LABELS = { survey: 'Survey', investigate: 'Investigate',
-  collect_debris: 'Collect Debris', collect_salvage: 'Collect Salvage' };
+const MISSION_LABELS = { survey: '勘测', investigate: '调查',
+  collect_debris: '回收残骸', collect_salvage: '回收残余物' };
 
 // The in-flight mission heading to a system for a given type (or undefined).
 function findMission(type, systemId) {
@@ -63,11 +63,11 @@ function renderTransit() {
   box.textContent = '';
   scTicks.scan = [];
   const surveys = scMissions.filter(m => m.missionType === 'survey');
-  document.getElementById('sc-transit-count').textContent = `${surveys.length} scanning`;
+  document.getElementById('sc-transit-count').textContent = `${surveys.length} 支扫描中`;
   if (!surveys.length) {
     const d = document.createElement('div');
     d.style.cssText = 'color:#484f58; padding:4px 0;';
-    d.textContent = 'No scanning fleets in transit.';
+    d.textContent = '当前没有航行中的扫描舰队。';
     box.appendChild(d);
     return;
   }
@@ -78,7 +78,7 @@ function renderTransit() {
     head.style.cssText = 'display:flex; align-items:baseline; gap:8px; font-size:0.85rem; margin-bottom:3px;';
     const name = document.createElement('span');
     name.style.color = '#e6edf3';
-    name.textContent = `${target} · Survey`;
+    name.textContent = `${target} · 勘测`;
     head.appendChild(name);
     const bar = makeMissionBar(m);
     bar.el.style.marginTop = '0';
@@ -92,13 +92,13 @@ export async function initScoutingTab() {
   if (inited) return;
   inited = true;
   const status = document.getElementById('sc-progress');
-  status.textContent = 'Loading…';
+  status.textContent = '正在加载…';
 
   const [planets, map] = await Promise.all([
     browser.runtime.sendMessage({ type: 'GET_PLANETS' }),
     browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' }),
   ]);
-  if (map.error) { status.textContent = `Error: ${map.error}`; inited = false; return; }
+  if (map.error) { status.textContent = `错误：${map.error}`; inited = false; return; }
   for (const s of (map.systems || [])) {
     scSystems[s.id] = { x: s.x, y: s.y, name: s.name, zone: s.securityZone || null };
   }
@@ -124,7 +124,7 @@ export async function initScoutingTab() {
   drawDebrisZoneToggles();
   await loadInvHistory();
   await refreshTemplates();
-  browser.storage.onChanged.addListener((changes, area) => {
+  globalThis.nexusStorage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.fleet_templates) refreshTemplates();
   });
 
@@ -166,7 +166,7 @@ async function refreshTemplates() {
     sel.textContent = '';
     if (!scTemplates.length) {
       const o = document.createElement('option');
-      o.value = ''; o.textContent = '— none (create in Fleet Templates) —';
+      o.value = ''; o.textContent = '— 无（请在“舰队模板”中创建）—';
       sel.appendChild(o);
       continue;
     }
@@ -183,18 +183,18 @@ async function refreshTemplates() {
 // Returns { ships, short } or { error }.
 async function templateShips(templateId, planetId) {
   const tpl = scTemplates.find(t => String(t.id) === templateId);
-  if (!tpl) return { error: 'No fleet template selected — create one in Fleet Templates.' };
+  if (!tpl) return { error: '未选择舰队模板，请先在“舰队模板”中创建。' };
   const wanted = Object.entries(tpl.ships || {})
     .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
     .filter(s => s.quantity > 0);
-  if (!wanted.length) return { error: `Template "${tpl.name}" has no ships.` };
+  if (!wanted.length) return { error: `模板“${tpl.name}”中没有舰船。` };
 
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) return { error: av.error };
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
-  if (!ships.length) return { error: `None of template "${tpl.name}"'s ships are on this planet.` };
+  if (!ships.length) return { error: `该星球上没有模板“${tpl.name}”中的任何舰船。` };
   return { ships, short: wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity), name: tpl.name };
 }
 
@@ -208,7 +208,7 @@ function drawToggles(boxId, filter, redraw, onChange) {
     const b = document.createElement('button');
     const on = filter.has(z);
     b.type = 'button';
-    b.textContent = z;
+    b.textContent = uiLabel(z);
     b.style.cssText = `padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem;
       border:1px solid ${ZONE_COLOR[z]}; text-transform:capitalize;
       color:${on ? '#0d1117' : ZONE_COLOR[z]}; background:${on ? ZONE_COLOR[z] : 'transparent'};`;
@@ -253,12 +253,12 @@ async function launchScan() {
   const planetId = Number(document.getElementById('sc-planet').value);
   const planet = scPlanets.find(p => p.id === planetId);
 
-  status.textContent = 'Finding nearest system…';
+  status.textContent = '正在查找最近的星系…';
   const [cd, mi] = await Promise.all([
     browser.runtime.sendMessage({ type: 'GET_SURVEY_COOLDOWNS' }),
     browser.runtime.sendMessage({ type: 'GET_MISSIONS' }),
   ]);
-  if (cd.error) { status.textContent = `Error: ${cd.error}`; return; }
+  if (cd.error) { status.textContent = `错误：${cd.error}`; return; }
   const now = Date.now();
   // Exclude systems on cooldown and systems with a survey already in flight
   // (cooldown only starts once that survey completes).
@@ -271,24 +271,24 @@ async function launchScan() {
 
   const target = nearestTarget(planet ? planet.systemId : null, onCooldown);
   if (!target) {
-    const zs = scZoneFilter.size ? [...scZoneFilter].join('/') + ' ' : '';
-    status.textContent = `No available ${zs}system to survey.`;
+    const zs = scZoneFilter.size ? [...scZoneFilter].map(uiLabel).join('/') + ' ' : '';
+    status.textContent = `没有可勘测的${zs}星系。`;
     return;
   }
 
   const r = await templateShips(document.getElementById('sc-scan-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
-  if (!await confirmDialog(`Survey ${target.name} (${target.dist} away)?\n\n` +
-    `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}` +
-    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
+  if (!await confirmDialog(`勘测 ${target.name}（距离 ${target.dist}）？\n\n` +
+    `出发地：${planet ? planet.name : planetId}\n模板：${r.name}` +
+    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''), r.ships)) return;
 
-  status.textContent = `Surveying ${target.name}…`;
+  status.textContent = `正在勘测 ${target.name}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_SURVEY', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships,
   });
-  if (res.error) { status.textContent = `Survey failed: ${res.error}`; return; }
+  if (res.error) { status.textContent = `勘测失败：${res.error}`; return; }
   scJustSurveyed.add(target.id);
-  status.textContent = `Probe sent to ${target.name} ✓`;
+  status.textContent = `探测器已派往 ${target.name} ✓`;
   loadActiveSurveys();
   updateAvail();
 }
@@ -298,9 +298,9 @@ async function loadActiveSurveys() {
     browser.runtime.sendMessage({ type: 'GET_SURVEY_REPORTS' }),
     browser.runtime.sendMessage({ type: 'GET_MISSIONS' }),
   ]);
-  if (res.error) { document.getElementById('sc-count').textContent = `Error: ${res.error}`; return; }
+  if (res.error) { document.getElementById('sc-count').textContent = `错误：${res.error}`; return; }
   if (mi.maxFleetSlots != null) {
-    document.getElementById('sc-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
+    document.getElementById('sc-slots').textContent = `舰队槽位 ${(mi.missions || []).length}/${mi.maxFleetSlots}`;
   }
   scMissions = (mi.missions || []).filter(m => MISSION_LABELS[m.missionType]);
   renderTransit();
@@ -362,7 +362,7 @@ function renderSurveys() {
   tbody.textContent = '';
   scTicks.invest = [];
   document.getElementById('sc-count').textContent =
-    `${scPending.length} awaiting investigation` + (scReturning.length ? ` · ${scReturning.length} returning` : '');
+    `${scPending.length} 个等待调查` + (scReturning.length ? ` · ${scReturning.length} 支返航中` : '');
   const now = Date.now();
   for (const r of scPending) {
     const tr = document.createElement('tr');
@@ -371,7 +371,7 @@ function renderSurveys() {
     const tgtTd = document.createElement('td');
     const btn = document.createElement('button');
     const busy = scInvestigating.has(r.systemId);
-    btn.textContent = busy ? 'Investigating…' : 'Launch Investigation';
+    btn.textContent = busy ? '调查中…' : '发起调查';
     btn.disabled = busy;
     btn.style.cssText = busy
       ? 'background:#30363d; border:1px solid #30363d; color:#8b949e;' +
@@ -386,8 +386,8 @@ function renderSurveys() {
     tr.dataset.system = r.systemId;
     const cells = [
       r.systemName || `#${r.systemId}`,
-      r.eventTitle || r.eventType,
-      r.securityZone || '—',
+      r.eventTitle || uiLabel(r.eventType),
+      uiLabel(r.securityZone || '—'),
       '…',   // fuel cost, filled async
       '…',   // travel time, filled async
       r.anomalyExpiresAt ? fmtCountdown(new Date(r.anomalyExpiresAt) - now) : '—',
@@ -411,14 +411,14 @@ function renderSurveys() {
     tr.dataset.system = r.systemId;
     const tgtTd = document.createElement('td');
     const btn = document.createElement('button');
-    btn.textContent = 'Returning…';
+    btn.textContent = '返航中…';
     btn.disabled = true;
     btn.style.cssText = 'background:#30363d; border:1px solid #30363d; color:#8b949e;' +
       ' padding:6px 16px; border-radius:6px; cursor:not-allowed; font-size:0.85rem;';
     tgtTd.appendChild(btn);
     tr.appendChild(tgtTd);
     tr.appendChild(progressCell('investigate', r.systemId, 'invest'));
-    const cells = [r.systemName, r.eventTitle, r.securityZone || '—', '—', '—', '—'];
+    const cells = [r.systemName, r.eventTitle, uiLabel(r.securityZone || '—'), '—', '—', '—'];
     cells.forEach((v, i) => {
       const td = document.createElement('td');
       td.textContent = v;
@@ -445,7 +445,7 @@ async function computeFuel() {
     .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
     .filter(s => s.quantity > 0);
   if (!ships.length) {
-    fuelCells().forEach(c => { c.textContent = '—'; c.title = tpl ? 'Template has no ships' : 'No template selected'; });
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = tpl ? '模板中没有舰船' : '尚未选择模板'; });
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
   }
@@ -461,7 +461,7 @@ async function computeFuel() {
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    cell.title = est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`;
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -479,7 +479,7 @@ function tickTimers() {
   });
   if (expired) {
     scPending = scPending.filter(r => !r.anomalyExpiresAt || new Date(r.anomalyExpiresAt) > now);
-    document.getElementById('sc-count').textContent = `${scPending.length} awaiting investigation`;
+    document.getElementById('sc-count').textContent = `${scPending.length} 个等待调查`;
   }
 
   let salvExpired = false;
@@ -492,7 +492,7 @@ function tickTimers() {
   });
   if (salvExpired) {
     scSalvage = scSalvage.filter(s => !s.expires || new Date(s.expires) > now);
-    document.getElementById('sc-salvage-count').textContent = `${scSalvage.length} awaiting collection`;
+    document.getElementById('sc-salvage-count').textContent = `${scSalvage.length} 处等待回收`;
   }
 }
 
@@ -503,18 +503,18 @@ async function investigate(report) {
 
   const r = await templateShips(document.getElementById('sc-inv-template').value, planetId);
   if (r.error) { status.textContent = r.error; return; }
-  if (!await confirmDialog(`Investigate ${report.systemName} (${report.eventTitle || report.eventType})?\n\n` +
-    `From: ${planet ? planet.name : planetId}\nTemplate: ${r.name}` +
-    (r.short ? '\n\n⚠ Some template ships are short; sending what is available.' : ''), r.ships)) return;
+  if (!await confirmDialog(`调查 ${report.systemName}（${report.eventTitle || uiLabel(report.eventType)}）？\n\n` +
+    `出发地：${planet ? planet.name : planetId}\n模板：${r.name}` +
+    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''), r.ships)) return;
 
-  status.textContent = `Investigating ${report.systemName}…`;
+  status.textContent = `正在调查 ${report.systemName}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,
   });
-  if (res.error) { status.textContent = `Investigate failed: ${res.error}`; return; }
+  if (res.error) { status.textContent = `调查失败：${res.error}`; return; }
   scJustInvestigated.add(report.systemId);
   scInvestigating.add(report.systemId);
-  status.textContent = `Fleet sent to ${report.systemName} ✓`;
+  status.textContent = `舰队已派往 ${report.systemName} ✓`;
   loadActiveSurveys();
   setTimeout(loadActiveSurveys, 2000);   // retry for post-POST API lag → prompt bar
   updateAvail();
@@ -550,12 +550,12 @@ attachSortable('sc-salvage-head', scSalvageSort, () => renderSalvage());
 // we accumulate investigated systemIds (→ report time) here. An entry drops when
 // debris there is collected, or once it's older than INV_HISTORY_TTL_MS.
 async function loadInvHistory() {
-  const { debris_inv_history } = await browser.storage.local.get('debris_inv_history');
+  const { debris_inv_history } = await globalThis.nexusStorage.get('debris_inv_history');
   scInvHistory = new Map(Object.entries(debris_inv_history || {}).map(([k, v]) => [Number(k), v]));
   if (pruneInvHistory()) saveInvHistory();
 }
 async function saveInvHistory() {
-  await browser.storage.local.set({ debris_inv_history: Object.fromEntries(scInvHistory) });
+  await globalThis.nexusStorage.set({ debris_inv_history: Object.fromEntries(scInvHistory) });
 }
 // Drop entries past the TTL. Returns true if anything was removed.
 function pruneInvHistory() {
@@ -569,22 +569,22 @@ function pruneInvHistory() {
 
 // Debris zone filter persists across sessions.
 async function loadDebrisZone() {
-  const { debris_zone_filter } = await browser.storage.local.get('debris_zone_filter');
+  const { debris_zone_filter } = await globalThis.nexusStorage.get('debris_zone_filter');
   scDebrisZoneFilter.clear();
   for (const z of (debris_zone_filter || [])) scDebrisZoneFilter.add(z);
 }
 function saveDebrisZone() {
-  browser.storage.local.set({ debris_zone_filter: [...scDebrisZoneFilter] });
+  globalThis.nexusStorage.set({ debris_zone_filter: [...scDebrisZoneFilter] });
 }
 
 // Survey-target zone filter persists across sessions.
 async function loadSurveyZone() {
-  const { survey_zone_filter } = await browser.storage.local.get('survey_zone_filter');
+  const { survey_zone_filter } = await globalThis.nexusStorage.get('survey_zone_filter');
   scZoneFilter.clear();
   for (const z of (survey_zone_filter || [])) scZoneFilter.add(z);
 }
 function saveSurveyZone() {
-  browser.storage.local.set({ survey_zone_filter: [...scZoneFilter] });
+  globalThis.nexusStorage.set({ survey_zone_filter: [...scZoneFilter] });
 }
 
 // Cargo haulers the user can pick to collect debris. Loaded from the shipyard
@@ -597,7 +597,7 @@ const scCargoSel = new Set();        // selected shipDefIds
 async function loadCargoShips() {
   const [res, stored, me] = await Promise.all([
     browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
-    browser.storage.local.get('research'),
+    globalThis.nexusStorage.get('research'),
     browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
   ]);
   const bonus = cargoBonuses(stored.research || []);
@@ -641,7 +641,7 @@ function renderCargoToggles() {
     const on = scCargoSel.has(s.shipDefId);
     const b = document.createElement('button');
     b.type = 'button';
-    b.title = `${s.name} — ${s.cap.toLocaleString()} cargo`;
+    b.title = `${s.name} — ${s.cap.toLocaleString()} 货舱容量`;
     b.style.cssText = `padding:2px; border-radius:6px; cursor:pointer; line-height:0;
       border:2px solid ${on ? '#2ea043' : '#30363d'}; background:${on ? '#193b22' : 'transparent'};`;
     if (s.imageUrl) {
@@ -699,8 +699,8 @@ async function updateAvail() {
   if (!planetId || !scAllShips.length) { clearAvailStrip(debrisBox); clearAvailStrip(invBox); return; }
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) { clearAvailStrip(debrisBox, av.error); clearAvailStrip(invBox, av.error); return; }
-  renderAvailStrip(debrisBox, scCargoShips, av.available, 'No cargo ships on this planet.');
-  renderAvailStrip(invBox, scAllShips, av.available, 'No ships on this planet.');
+  renderAvailStrip(debrisBox, scCargoShips, av.available, '该星球没有货运舰船。');
+  renderAvailStrip(invBox, scAllShips, av.available, '该星球没有舰船。');
 }
 
 // Fewest selected haulers (largest-first, smallest fills the tail) to carry
@@ -719,11 +719,11 @@ function planFleet(total, ships) {
 }
 
 async function loadDebris() {
-  const { debris_fields, debris_last_check } = await browser.storage.local.get(['debris_fields', 'debris_last_check']);
+  const { debris_fields, debris_last_check } = await globalThis.nexusStorage.get(['debris_fields', 'debris_last_check']);
   scDebris = (debris_fields || []).map(f => ({ ...f, total: (f.ore || 0) + (f.silicates || 0) + (f.alloys || 0) }));
   document.getElementById('sc-debris-last').textContent = debris_last_check
-    ? `Last check: ${new Date(debris_last_check).toLocaleString()}`
-    : 'Not checked yet.';
+    ? `上次检查：${new Date(debris_last_check).toLocaleString()}`
+    : '尚未检查。';
   renderDebris();
 }
 
@@ -737,7 +737,7 @@ function renderDebris() {
   // Header "show hidden" toggle reflects how many rows are hidden.
   const toggle = document.getElementById('sc-debris-hidden');
   toggle.style.display = scHiddenDebris.size ? '' : 'none';
-  toggle.textContent = scShowHidden ? `Hide hidden (${scHiddenDebris.size})` : `Show hidden (${scHiddenDebris.size})`;
+  toggle.textContent = scShowHidden ? `收起隐藏项（${scHiddenDebris.size}）` : `显示隐藏项（${scHiddenDebris.size}）`;
 
   // Systems with a collect fleet already in flight (persisted across reloads),
   // so a field isn't offered for collection twice.
@@ -765,9 +765,9 @@ function renderDebris() {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 12; td.style.color = '#484f58';
-    td.textContent = !scDebris.length ? 'No debris fields currently visible.'
-      : (scDebrisZoneFilter.size || scInvestigatedOnly) ? 'No debris matches the current filter.'
-      : 'All debris fields hidden.';
+    td.textContent = !scDebris.length ? '当前没有可见的残骸场。'
+      : (scDebrisZoneFilter.size || scInvestigatedOnly) ? '没有符合当前筛选条件的残骸场。'
+      : '所有残骸场均已隐藏。';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
   }
@@ -782,7 +782,7 @@ function renderDebris() {
     const btn = document.createElement('button');
     const busy = f.debrisId != null && (scJustCollected.has(f.debrisId) || (f.systemId != null && collectingSystems.has(f.systemId)));
     const ok = f.debrisId != null && !busy;
-    btn.textContent = busy ? 'Collecting…' : ok ? 'Collect' : '—';
+    btn.textContent = busy ? '回收中…' : ok ? '回收' : '—';
     btn.disabled = !ok;
     btn.style.cssText = ok
       ? 'background:#238636; border:1px solid #2ea043; color:#fff; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:0.85rem;'
@@ -794,7 +794,7 @@ function renderDebris() {
 
     const cells = [
       f.system,
-      f.zone || '—',
+      uiLabel(f.zone || '—'),
       (f.ore || 0).toLocaleString(),
       (f.silicates || 0).toLocaleString(),
       (f.alloys || 0).toLocaleString(),
@@ -816,7 +816,7 @@ function renderDebris() {
     const hideTd = document.createElement('td');
     const hideBtn = document.createElement('button');
     hideBtn.textContent = hidden ? '↩' : '✕';
-    hideBtn.title = hidden ? 'Unhide row' : 'Hide row';
+    hideBtn.title = hidden ? '取消隐藏此行' : '隐藏此行';
     hideBtn.style.cssText = 'background:transparent; border:none; color:#8b949e; cursor:pointer; font-size:0.9rem;';
     hideBtn.addEventListener('click', () => {
       if (hidden) scHiddenDebris.delete(f.id); else scHiddenDebris.add(f.id);
@@ -841,7 +841,7 @@ async function computeDebrisFuel() {
   const timeCells = sel('sc-debris-time');
   const cargo = selectedCargo();
   if (!cargo.length) {
-    fuelCells().forEach(c => { c.textContent = '—'; c.title = 'Select cargo ships above'; });
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = '请先在上方选择货运舰船'; });
     shipCells().forEach(c => { c.textContent = '—'; c.title = ''; });
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
@@ -865,7 +865,7 @@ async function computeDebrisFuel() {
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    cell.title = est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`;
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -873,38 +873,38 @@ async function computeDebrisFuel() {
 async function collectDebris(field) {
   const status = document.getElementById('sc-progress');
   const planet = debrisSourcePlanet(field.systemId);
-  if (!planet) { status.textContent = 'No source planet found for this field.'; return; }
+  if (!planet) { status.textContent = '未找到该残骸场的出发星球。'; return; }
   const planetId = planet.id;
 
   const cargo = selectedCargo();
   const plan = planFleet(field.total, cargo);
-  if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
+  if (!plan.length) { status.textContent = '请先在上方选择货运舰船。'; return; }
 
   // Cap to what the source planet actually has; warn if that can't carry it all.
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { status.textContent = `Error: ${av.error}`; return; }
+  if (av.error) { status.textContent = `错误：${av.error}`; return; }
   const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
   const ships = plan
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
-  if (!ships.length) { status.textContent = 'None of the selected cargo ships are on this planet.'; return; }
+  if (!ships.length) { status.textContent = '该星球没有已选中的货运舰船。'; return; }
   const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
   const short = carried < field.total;
 
-  if (!await confirmDialog(`Collect debris at ${field.system} (${field.total.toLocaleString()} cargo)?\n\n` +
-    `From: ${planet ? planet.name : planetId}` +
-    (short ? `\n\n⚠ Selected ships on this planet only carry ${carried.toLocaleString()} — collecting what fits.` : ''), ships)) return;
+  if (!await confirmDialog(`回收 ${field.system} 的残骸（${field.total.toLocaleString()} 货物）？\n\n` +
+    `出发地：${planet ? planet.name : planetId}` +
+    (short ? `\n\n⚠ 该星球上已选舰船只能运载 ${carried.toLocaleString()}，将回收能够装下的部分。` : ''), ships)) return;
 
-  status.textContent = `Collecting at ${field.system}…`;
+  status.textContent = `正在回收 ${field.system} 的残骸…`;
   const res = await browser.runtime.sendMessage({
     type: 'COLLECT_DEBRIS', sourcePlanetId: planetId, debrisId: field.debrisId, ships,
   });
-  if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
+  if (res.error) { status.textContent = `回收失败：${res.error}`; return; }
   scJustCollected.add(field.debrisId);
   if (field.systemId != null) scCollecting.set(field.systemId, { field: { ...field }, seenRun: false });
   // Loot claimed — drop this system from the investigation history.
   if (field.systemId != null && scInvHistory.delete(field.systemId)) saveInvHistory();
-  status.textContent = `Fleet sent to ${field.system} ✓`;
+  status.textContent = `舰队已派往 ${field.system} ✓`;
   renderDebris();
   updateAvail();
   // Pull the new mission in so the progress bar shows promptly; retry once for
@@ -915,14 +915,14 @@ async function collectDebris(field) {
 
 // ── Uncollected salvage ─────────────────────────────────────────────────────
 
-const RES_LABEL = { ore: 'Ore', silicates: 'Sil', hydrogen: 'Hyd', alloys: 'Alloy',
-  cryo_ice: 'Cryo-Ice', quantum_dust: 'Q.Dust', plasma_core: 'Plasma', dark_matter: 'D.Matter', antimatter: 'Antim' };
+const RES_LABEL = { ore: '矿石', silicates: '硅酸盐', hydrogen: '氢', alloys: '合金',
+  cryo_ice: '低温冰', quantum_dust: '量子尘', plasma_core: '等离子核心', dark_matter: '暗物质', antimatter: '反物质' };
 
 function renderSalvage() {
   const tbody = document.getElementById('sc-salvage-tbody');
   tbody.textContent = '';
   scTicks.salvage = [];
-  document.getElementById('sc-salvage-count').textContent = `${scSalvage.length} awaiting collection`;
+  document.getElementById('sc-salvage-count').textContent = `${scSalvage.length} 处等待回收`;
   const now = Date.now();
 
   const sorted = applySort('sc-salvage-head', scSalvage, scSalvageSort, 'system');
@@ -930,7 +930,7 @@ function renderSalvage() {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 10; td.style.color = '#484f58';
-    td.textContent = 'No uncollected salvage.';
+    td.textContent = '没有待回收的战利品。';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
   }
@@ -945,7 +945,7 @@ function renderSalvage() {
     const btn = document.createElement('button');
     const mission = s.systemId != null ? findMission('collect_salvage', s.systemId) : null;
     const busy = scJustSalvaged.has(s.reportId) || !!mission;
-    btn.textContent = busy ? 'Collecting…' : 'Collect';
+    btn.textContent = busy ? '回收中…' : '回收';
     btn.disabled = busy;
     btn.style.cssText = busy
       ? 'background:#30363d; border:1px solid #30363d; color:#8b949e; padding:6px 16px; border-radius:6px; cursor:not-allowed; font-size:0.85rem;'
@@ -959,7 +959,7 @@ function renderSalvage() {
       .map(([k, v]) => `${RES_LABEL[k] || k} ${v.toLocaleString()}`).join(', ');
     const cells = [
       s.system,
-      s.zone || '—',
+      uiLabel(s.zone || '—'),
       breakdown,
       (s.total || 0).toLocaleString(),
       '…',   // ship count, filled by computeSalvageFuel
@@ -994,7 +994,7 @@ async function computeSalvageFuel() {
   const timeCells = sel('sc-salvage-time');
   const cargo = selectedCargo();
   if (!cargo.length) {
-    fuelCells().forEach(c => { c.textContent = '—'; c.title = 'Select cargo ships above'; });
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = '请先在上方选择货运舰船'; });
     shipCells().forEach(c => { c.textContent = '—'; c.title = ''; });
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
@@ -1017,7 +1017,7 @@ async function computeSalvageFuel() {
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    cell.title = est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`;
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -1029,30 +1029,30 @@ async function collectSalvage(salvage) {
 
   const cargo = selectedCargo();
   const plan = planFleet(salvage.total, cargo);
-  if (!plan.length) { status.textContent = 'Select cargo ships above first.'; return; }
+  if (!plan.length) { status.textContent = '请先在上方选择货运舰船。'; return; }
 
   // Cap to what the source planet has; warn if that can't carry it all.
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { status.textContent = `Error: ${av.error}`; return; }
+  if (av.error) { status.textContent = `错误：${av.error}`; return; }
   const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
   const ships = plan
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
-  if (!ships.length) { status.textContent = 'None of the selected cargo ships are on this planet.'; return; }
+  if (!ships.length) { status.textContent = '该星球没有已选中的货运舰船。'; return; }
   const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
   const short = carried < salvage.total;
 
-  if (!await confirmDialog(`Collect salvage at ${salvage.system} (${salvage.total.toLocaleString()} cargo)?\n\n` +
-    `From: ${planet ? planet.name : planetId}` +
-    (short ? `\n\n⚠ Selected ships on this planet only carry ${carried.toLocaleString()} — collecting what fits.` : ''), ships)) return;
+  if (!await confirmDialog(`回收 ${salvage.system} 的战利品（${salvage.total.toLocaleString()} 货物）？\n\n` +
+    `出发地：${planet ? planet.name : planetId}` +
+    (short ? `\n\n⚠ 该星球上已选舰船只能运载 ${carried.toLocaleString()}，将回收能够装下的部分。` : ''), ships)) return;
 
-  status.textContent = `Collecting salvage at ${salvage.system}…`;
+  status.textContent = `正在回收 ${salvage.system} 的战利品…`;
   const res = await browser.runtime.sendMessage({
     type: 'COLLECT_SALVAGE', sourcePlanetId: planetId, reportId: salvage.reportId, ships,
   });
-  if (res.error) { status.textContent = `Collect failed: ${res.error}`; return; }
+  if (res.error) { status.textContent = `回收失败：${res.error}`; return; }
   scJustSalvaged.add(salvage.reportId);
-  status.textContent = `Fleet sent to ${salvage.system} ✓`;
+  status.textContent = `舰队已派往 ${salvage.system} ✓`;
   renderSalvage();
   updateAvail();
   // Pull the new mission in so the progress bar shows promptly (retry for lag).

@@ -49,7 +49,26 @@ function makeBrowserStub(store = {}) {
   };
   global.Blob = class { constructor() {} };
   global.URL = { createObjectURL: () => 'blob:test', revokeObjectURL() {} };
-  return store;
+  // Production storage is now universe-prefixed. Keep existing processor tests
+  // readable by exposing NX-S0 values through their historical property names.
+  return new Proxy(store, {
+    get(target, property, receiver) {
+      if (typeof property === 'string' && !Reflect.has(target, property)) {
+        const scoped = `nexus_server:s0:${property}`;
+        if (Reflect.has(target, scoped)) return Reflect.get(target, scoped, receiver);
+      }
+      return Reflect.get(target, property, receiver);
+    },
+    set(target, property, value, receiver) {
+      if (typeof property === 'string') {
+        const scoped = `nexus_server:s0:${property}`;
+        if (!Reflect.has(target, property) && Reflect.has(target, scoped)) {
+          return Reflect.set(target, scoped, value, receiver);
+        }
+      }
+      return Reflect.set(target, property, value, receiver);
+    },
+  });
 }
 
 // Imports background.js (ESM service worker) and returns its exported

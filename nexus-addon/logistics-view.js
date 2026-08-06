@@ -20,17 +20,18 @@ const IMG = '/images/resources';
 // k = colony field (camelCase, as the APIs return it); cargo = dispatch cargo key
 // (snake_case, as /fleet/dispatch expects).
 const RESOURCES = [
-  { k: 'ore',         cargo: 'ore',          label: 'Ore',         icon: 'ore.webp' },
-  { k: 'silicates',   cargo: 'silicates',    label: 'Silicates',   icon: 'silicates.webp' },
-  { k: 'hydrogen',    cargo: 'hydrogen',     label: 'Hydrogen',    icon: 'hydrogen.webp' },
-  { k: 'alloys',      cargo: 'alloys',       label: 'Alloys',      icon: 'alloys.webp' },
-  { k: 'cryoIce',     cargo: 'cryo_ice',     label: 'Cryo-Ice',    icon: 'cryo_ice.webp' },
-  { k: 'quantumDust', cargo: 'quantum_dust', label: 'Quantum Dust',icon: 'quantum_dust.webp' },
-  { k: 'plasmaCore',  cargo: 'plasma_core',  label: 'Plasma Core', icon: 'plasma_core.webp' },
-  { k: 'bioExtract',  cargo: 'bio_extract',  label: 'Bio-Extract', icon: 'bio_extract.webp' },
-  { k: 'darkMatter',  cargo: 'dark_matter',  label: 'Dark Matter', icon: 'dark_matter.webp' },
-  { k: 'antimatter',  cargo: 'antimatter',   label: 'Antimatter',  icon: 'antimatter.webp' },
+  { k: 'ore',         cargo: 'ore',          label: '矿石',       icon: 'ore.webp' },
+  { k: 'silicates',   cargo: 'silicates',    label: '硅酸盐',     icon: 'silicates.webp' },
+  { k: 'hydrogen',    cargo: 'hydrogen',     label: '氢',         icon: 'hydrogen.webp' },
+  { k: 'alloys',      cargo: 'alloys',       label: '合金',       icon: 'alloys.webp' },
+  { k: 'cryoIce',     cargo: 'cryo_ice',     label: '低温冰',     icon: 'cryo_ice.webp' },
+  { k: 'quantumDust', cargo: 'quantum_dust', label: '量子尘',     icon: 'quantum_dust.webp' },
+  { k: 'plasmaCore',  cargo: 'plasma_core',  label: '等离子核心', icon: 'plasma_core.webp' },
+  { k: 'bioExtract',  cargo: 'bio_extract',  label: '生物提取物', icon: 'bio_extract.webp' },
+  { k: 'darkMatter',  cargo: 'dark_matter',  label: '暗物质',     icon: 'dark_matter.webp' },
+  { k: 'antimatter',  cargo: 'antimatter',   label: '反物质',     icon: 'antimatter.webp' },
 ];
+const KIND_LABELS = { Planet: '星球', Moon: '月球', Outpost: '前哨站' };
 const RES_BY_K = Object.fromEntries(RESOURCES.map(r => [r.k, r]));
 const BASE4 = new Set(['ore', 'silicates', 'hydrogen', 'alloys']);
 // Storage cap for one resource on a colony. Planets carry a per-resource cap
@@ -114,7 +115,7 @@ function planFleetMulti(amounts, haulers) {
 function fmtDur(sec) {
   if (!sec || sec < 0) return '—';
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
-  return h ? `${h}h ${m}m` : m ? `${m}m ${s}s` : `${s}s`;
+  return h ? `${h}时 ${m}分` : m ? `${m}分 ${s}秒` : `${s}秒`;
 }
 
 const fmt = n => Math.round(n || 0).toLocaleString();
@@ -161,11 +162,11 @@ async function openView() {
   page.style.cssText = 'max-width:1900px; margin:0 auto; color:#c9d1d9;';
   overlay.appendChild(page);
   document.body.appendChild(overlay);
-  page.innerHTML = `<h1 style="margin:0 0 4px; font-size:1.6rem; color:#e6edf3;">Quartermaster</h1>
-    <p class="lv-sub" style="margin:0 0 16px; color:#9aa4b2; font-size:0.9rem;">Loading colonies…</p>`;
+  page.innerHTML = `<h1 style="margin:0 0 4px; font-size:1.6rem; color:#e6edf3;">军需官</h1>
+    <p class="lv-sub" style="margin:0 0 16px; color:#9aa4b2; font-size:0.9rem;">正在加载殖民地…</p>`;
 
   const close = document.createElement('button');
-  close.textContent = '✕'; close.title = 'Close (Esc)';
+  close.textContent = '✕'; close.title = '关闭（Esc）';
   close.style.cssText = 'position:fixed; top:16px; right:20px; z-index:1; background:transparent;' +
     'border:none; color:#8b949e; font-size:1.6rem; cursor:pointer; line-height:1;';
   close.addEventListener('click', closeView);
@@ -200,7 +201,7 @@ async function openView() {
     const moonCol = moonIds.map((id, i) => {
       const [det, fl] = moonDetails[i];
       const res = (det && det.moon) || {};
-      return { id, systemId: res.systemId, kind: 'Moon', name: res.name || `Moon #${id}`, res, ships: (fl.fleet || []) };
+      return { id, systemId: res.systemId, kind: 'Moon', name: res.name || `月球 #${id}`, res, ships: (fl.fleet || []) };
     });
 
     colonies = planets.map((p, i) => {
@@ -208,9 +209,9 @@ async function openView() {
       const res = (detail && detail.planet) || p;
       return { id: p.id, systemId: p.systemId, kind: 'Planet', name: p.name, res, ships: (fleet.fleet || []) };
     }).concat(moonCol,
-      outposts.map(o => ({ id: o.id, systemId: o.systemId, kind: 'Outpost', name: o.name || `Outpost #${o.id}`, res: o, ships: null, deployed: o.deployedShipCount })));
+      outposts.map(o => ({ id: o.id, systemId: o.systemId, kind: 'Outpost', name: o.name || `前哨站 #${o.id}`, res: o, ships: null, deployed: o.deployedShipCount })));
   } catch (e) {
-    page.querySelector('.lv-sub').textContent = `Error: ${e.message}`;
+    page.querySelector('.lv-sub').textContent = `错误：${e.message}`;
     return;
   }
   if (!overlay) return;
@@ -290,8 +291,8 @@ function shipBox(title, list, emptyMsg) {
 
 function render(page, colonies, missions = []) {
   page.querySelector('.lv-sub').innerHTML =
-    `${colonies.length} colonies (${colonies.filter(c => c.kind === 'Planet').length} planets, ${colonies.filter(c => c.kind === 'Moon').length} moons, ${colonies.filter(c => c.kind === 'Outpost').length} outposts)` +
-    ` · <span style="color:#6e7681;">drag a resource or ship onto another colony to send it (confirm before dispatch)</span>`;
+    `共 ${colonies.length} 个殖民地（${colonies.filter(c => c.kind === 'Planet').length} 个星球、${colonies.filter(c => c.kind === 'Moon').length} 个月球、${colonies.filter(c => c.kind === 'Outpost').length} 个前哨站）` +
+    ` · <span style="color:#6e7681;">将资源或舰船拖到另一个殖民地即可准备调度，派出前仍需确认</span>`;
 
   allColonies = colonies;
   // Transfer builder card (populated on drop, hidden otherwise), pinned on top.
@@ -311,7 +312,7 @@ function render(page, colonies, missions = []) {
     }
   }
   const totalList = [...totals.values()].filter(s => s.qty > 0).sort((a, b) => a.sortOrder - b.sortOrder);
-  page.appendChild(shipBox('Total ships (stationed)', totalList, 'No ships stationed.'));
+  page.appendChild(shipBox('驻扎舰船总计', totalList, '没有驻扎舰船。'));
 
   // ── In flight: ships on active missions (fleetComposition per mission) ──
   const flight = new Map();
@@ -323,7 +324,7 @@ function render(page, colonies, missions = []) {
     }
   }
   const flightList = [...flight.values()].filter(s => s.qty > 0).sort((a, b) => b.qty - a.qty);
-  page.appendChild(shipBox(`In flight (${missions.length} mission${missions.length === 1 ? '' : 's'})`, flightList, 'None in flight.'));
+  page.appendChild(shipBox(`任务中的舰船（${missions.length} 个任务）`, flightList, '当前没有执行中的舰船。'));
 
   // ── Colony columns: moons (left) · planets (centre) · outposts (right) ──
   const makeCol = (label, list, opts) => {
@@ -345,9 +346,9 @@ function render(page, colonies, missions = []) {
   const outposts = colonies.filter(c => c.kind === 'Outpost');
   const cols = document.createElement('div');
   cols.style.cssText = 'display:flex; gap:28px; align-items:flex-start;';
-  if (moons.length) cols.appendChild(makeCol('Moons', moons, { width: '235px' }));
-  cols.appendChild(makeCol('Planets', colonies.filter(c => c.kind === 'Planet'), { grow: true }));
-  if (outposts.length) cols.appendChild(makeCol('Outposts', outposts, { width: '235px' }));
+  if (moons.length) cols.appendChild(makeCol('月球', moons, { width: '235px' }));
+  cols.appendChild(makeCol('星球', colonies.filter(c => c.kind === 'Planet'), { grow: true }));
+  if (outposts.length) cols.appendChild(makeCol('前哨站', outposts, { width: '235px' }));
   page.appendChild(cols);
 }
 
@@ -378,7 +379,7 @@ function colonyCard(c) {
   const head = document.createElement('div');
   head.style.cssText = 'display:flex; align-items:baseline; gap:8px; margin-bottom:8px;';
   head.innerHTML = `<b style="color:#e6edf3;">${esc(c.name)}</b>` +
-    `<span style="color:#8b949e; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em;">${c.kind}</span>`;
+    `<span style="color:#8b949e; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em;">${KIND_LABELS[c.kind] || c.kind}</span>`;
   // Outposts extract exactly one resource at a time — whichever `{k}Rate`
   // field is nonzero (mirrors its asteroid field's fieldType).
   if (c.kind === 'Outpost' && c.res) {
@@ -386,8 +387,8 @@ function colonyCard(c) {
     if (mining) {
       const badge = document.createElement('span');
       badge.style.cssText = 'display:inline-flex; align-items:center; gap:4px; margin-left:auto; color:#8b949e; font-size:0.75rem;';
-      badge.title = `Mining ${mining.label}`;
-      badge.innerHTML = `<img src="${IMG}/${mining.icon}" width="13" height="13" style="width:13px;height:13px;">${fmt(c.res[`${mining.k}Rate`])}/h`;
+      badge.title = `正在开采${mining.label}`;
+      badge.innerHTML = `<img src="${IMG}/${mining.icon}" width="13" height="13" style="width:13px;height:13px;">${fmt(c.res[`${mining.k}Rate`])}/时`;
       head.appendChild(badge);
     }
   }
@@ -409,7 +410,7 @@ function colonyCard(c) {
     // drop on a planet to collect them there.
     if (c.id != null) {
       row.draggable = true; row.style.cursor = 'grab';
-      row.title = c.kind === 'Outpost' ? 'Drag to a planet to collect' : c.kind === 'Moon' ? 'Drag to a planet to transfer' : 'Drag to another colony to send';
+      row.title = c.kind === 'Outpost' ? '拖到星球以收取资源' : c.kind === 'Moon' ? '拖到星球以转移资源' : '拖到另一个殖民地以运送资源';
       row.style.border = '1px solid #30363d'; row.style.background = '#161b22';
       const grip = document.createElement('span'); grip.textContent = '⠿';
       grip.style.cssText = 'color:#484f58; font-size:0.8rem; cursor:grab;';
@@ -421,22 +422,22 @@ function colonyCard(c) {
     }
     resWrap.appendChild(row);
   }
-  if (!resWrap.childElementCount) resWrap.innerHTML = '<span style="color:#484f58;">No resources.</span>';
+  if (!resWrap.childElementCount) resWrap.innerHTML = '<span style="color:#484f58;">无资源。</span>';
   card.appendChild(resWrap);
 
   // Ships
   const shipHead = document.createElement('div');
   shipHead.style.cssText = 'color:#8b949e; font-size:0.72rem; margin:10px 0 4px; text-transform:uppercase; letter-spacing:0.05em;';
-  shipHead.textContent = 'Ships';
+  shipHead.textContent = '舰船';
   card.appendChild(shipHead);
   const shipWrap = document.createElement('div');
   shipWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:4px 12px; font-size:0.8rem;';
   if (c.ships == null) {
-    shipWrap.innerHTML = `<span style="color:#9aa4b2;">${c.deployed ? `${fmt(c.deployed)} deployed` : 'none'}</span>`;
+    shipWrap.innerHTML = `<span style="color:#9aa4b2;">${c.deployed ? `已部署 ${fmt(c.deployed)} 艘` : '无'}</span>`;
   } else {
     const ships = c.ships.filter(f => (f.quantity || 0) > 0)
       .sort((a, b) => (a.definition?.sortOrder || 0) - (b.definition?.sortOrder || 0));
-    if (!ships.length) shipWrap.innerHTML = '<span style="color:#484f58;">none</span>';
+    if (!ships.length) shipWrap.innerHTML = '<span style="color:#484f58;">无</span>';
     for (const f of ships) {
       const sp = document.createElement('span');
       const nm = (f.definition || {}).name || '#' + f.shipDefId;
@@ -445,7 +446,7 @@ function colonyCard(c) {
       // Draggable → relocate these ships to another colony.
       const avail = (f.quantity || 0) - (f.damagedQuantity || 0);
       if (c.id != null && avail > 0) {
-        sp.draggable = true; sp.style.cursor = 'grab'; sp.title = c.kind === 'Moon' ? 'Drag to a planet to recall' : 'Drag to another colony to relocate';
+        sp.draggable = true; sp.style.cursor = 'grab'; sp.title = c.kind === 'Moon' ? '拖到星球以召回' : '拖到另一个殖民地以调动';
         sp.style.border = '1px solid #30363d'; sp.style.background = '#161b22';
         const grip = document.createElement('span'); grip.textContent = '⠿';
         grip.style.cssText = 'color:#484f58; font-size:0.75rem;';
@@ -556,7 +557,7 @@ function withStepper(inp, max) {
   const minus = mkBtn('−'); minus.onclick = () => commit(cur() - 1);
   const plus = mkBtn('+'); plus.onclick = () => commit(cur() + 1);
   wrap.append(minus, inp, plus);
-  if (max != null && isFinite(max)) { const mx = mkBtn('Max'); mx.onclick = () => commit(max); wrap.append(mx); }
+  if (max != null && isFinite(max)) { const mx = mkBtn('最高'); mx.onclick = () => commit(max); wrap.append(mx); }
   return wrap;
 }
 
@@ -575,9 +576,9 @@ async function renderBuilder() {
 
   const status = document.createElement('div'); status.style.cssText = 'color:#8b949e; font-size:0.82rem; min-height:16px; margin-top:6px;';
   const fuelLine = document.createElement('div'); fuelLine.style.cssText = 'color:#9aa4b2; font-size:0.85rem; margin-top:8px;';
-  const send = document.createElement('button'); send.textContent = 'Send';
+  const send = document.createElement('button'); send.textContent = '派出';
   send.style.cssText = 'padding:6px 16px; border-radius:6px; border:1px solid #2ea043; background:#238636; color:#fff; cursor:pointer;';
-  const clear = document.createElement('button'); clear.textContent = 'Clear';
+  const clear = document.createElement('button'); clear.textContent = '清空';
   clear.style.cssText = 'padding:6px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer;';
   clear.onclick = () => { builder = null; renderBuilder(); };
 
@@ -588,14 +589,14 @@ async function renderBuilder() {
   if (b.mode === 'collect') {
     const planets = allColonies.filter(c => c.kind === 'Planet');
     const srcPlanet = planets.find(c => c.id === b.srcPlanetId) || planets[0];
-    head.innerHTML = `<b style="color:#e6edf3;">Collect resources</b>` +
-      `<span style="color:#f0883e;">${srcPlanet ? esc(srcPlanet.name) : '?'} → ${esc(b.outpost.name)} → back</span>`;
+    head.innerHTML = `<b style="color:#e6edf3;">收取资源</b>` +
+      `<span style="color:#f0883e;">${srcPlanet ? esc(srcPlanet.name) : '?'} → ${esc(b.outpost.name)} → 返航</span>`;
     // Source planet picker.
     const sel = document.createElement('select');
     sel.style.cssText = 'background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:4px 7px; border-radius:6px;';
     for (const p of planets) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; if (p.id === b.srcPlanetId) o.selected = true; sel.appendChild(o); }
     sel.addEventListener('change', () => { b.srcPlanetId = Number(sel.value); b.cargoManual = {}; renderBuilder(); });
-    box.appendChild(fieldRow('<span style="color:#9aa4b2;">From planet</span>', sel));
+    box.appendChild(fieldRow('<span style="color:#9aa4b2;">出发星球</span>', sel));
     // Resource types to collect (present on the outpost).
     const typeWrap = document.createElement('div');
     typeWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:6px 14px; margin:8px 0;';
@@ -625,15 +626,15 @@ async function renderBuilder() {
     // Target amount: the API takes no amount (it fills ships to capacity), but we
     // can auto-plan the transport ships to carry ~this much.
     const targetInp = numInput(b.target || '', null);
-    targetInp.placeholder = 'auto (fill ships)';
+    targetInp.placeholder = '自动（装满舰船）';
     targetInp.addEventListener('change', () => {
       b.target = Math.min(availableOf(), Math.max(0, parseInt(targetInp.value, 10) || 0));
       b.cargoManual = planFleetMulti(collectAmounts(), cargoShips).plan;
       renderBuilder();
     });
-    box.appendChild(fieldRow('<span style="color:#9aa4b2;">Target amount (auto-plan ships)</span>', withStepper(targetInp, availableOf())));
+    box.appendChild(fieldRow('<span style="color:#9aa4b2;">目标数量（自动规划舰船）</span>', withStepper(targetInp, availableOf())));
     const cw = document.createElement('div'); cw.style.cssText = 'border-top:1px solid #21262d; margin-top:6px; padding-top:8px;';
-    cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Transport ships</div>';
+    cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">运输舰船</div>';
     box.appendChild(cw);
     const capLine = document.createElement('div'); capLine.style.cssText = 'font-size:0.82rem; margin-top:4px;';
     const updateSend = () => {
@@ -642,27 +643,27 @@ async function renderBuilder() {
       // Resource-aware: a ship can only carry resources its allowedCargo permits.
       const collected = avail - residualAfter(b.cargoManual, availAll(), cargoShips);
       const pct = avail > 0 ? Math.min(100, Math.round(collected / avail * 100)) : 0;
-      capLine.innerHTML = `Available <b style="color:#e6edf3">${fmt(avail)}</b> · capacity <b style="color:#e6edf3">${fmt(cap)}</b> · ` +
-        `~<b style="color:${collected >= avail && avail > 0 ? '#56d364' : '#e3b341'}">${pct}%</b> collected (≈${fmt(collected)})`;
+      capLine.innerHTML = `可收取 <b style="color:#e6edf3">${fmt(avail)}</b> · 运力 <b style="color:#e6edf3">${fmt(cap)}</b> · ` +
+        `预计收取 <b style="color:${collected >= avail && avail > 0 ? '#56d364' : '#e3b341'}">${pct}%</b>（约 ${fmt(collected)}）`;
       send.disabled = !getShips().length || b.filter.size === 0;
       refreshFuel();
     };
     for (const cs of cargoShips) {
       const inp = numInput(b.cargoManual[cs.shipDefId] || 0, cs.avail);
       inp.addEventListener('input', () => { b.cargoManual[cs.shipDefId] = Math.min(cs.avail, Math.max(0, parseInt(inp.value, 10) || 0)); updateSend(); });
-      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, withStepper(inp, cs.avail)));
+      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ 可用 ${fmt(cs.avail)} · 每艘 ${fmt(cs.cap)}</span>`, withStepper(inp, cs.avail)));
     }
-    if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this planet.</span>';
+    if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">该星球没有货运舰船。</span>';
     cw.appendChild(capLine);
     getShips = () => cargoShips.map(cs => ({ shipDefId: cs.shipDefId, quantity: b.cargoManual[cs.shipDefId] || 0 })).filter(s => s.quantity > 0);
     fuelSrc = b.srcPlanetId; fuelSys = b.outpost.systemId;
     box.append(fuelLine);
     updateSend();
   } else if (b.mode === 'resource') {
-    const rVerb = b.src.kind === 'Moon' ? 'Transfer resources' : b.target.kind === 'Moon' ? 'Send resources' : toOutpost ? 'Supply outpost' : 'Deliver resources';
+    const rVerb = b.src.kind === 'Moon' ? '转移资源' : b.target.kind === 'Moon' ? '运送资源' : toOutpost ? '补给前哨站' : '运送资源';
     head.innerHTML = `<b style="color:#e6edf3;">${rVerb}</b>` +
       `<span style="color:#f0883e;">${esc(b.src.name)} → ${esc(b.target.name)}</span>` +
-      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${esc(b.target.name)} to add</span>`;
+      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">继续拖到 ${esc(b.target.name)} 可追加</span>`;
     // Mission switch (planet → planet only): deliver = haulers drop cargo and
     // return; transfer = haulers stay at the destination. Other endpoints (moon/
     // outpost) don't take this choice.
@@ -677,9 +678,9 @@ async function renderBuilder() {
         btn.onclick = () => { b.deliverMode = mode; seg.querySelectorAll('button').forEach(x => x.__paint()); };
         return btn;
       };
-      seg.append(mk('deliver', 'Deliver', 'Haulers drop the cargo and return'),
-                 mk('transfer', 'Transfer', 'Haulers stay at the destination'));
-      box.appendChild(fieldRow('<span style="color:#9aa4b2;">Mission</span>', seg));
+      seg.append(mk('deliver', '运送', '货运舰卸下货物后返航'),
+                 mk('transfer', '转移', '货运舰留在目标地点'));
+      box.appendChild(fieldRow('<span style="color:#9aa4b2;">任务类型</span>', seg));
     }
     // Source picker — swap which planet the resources ship from (defaults to the
     // auto-chosen one). Changing it re-caps each amount to the new stock and
@@ -696,7 +697,7 @@ async function renderBuilder() {
         b.cargoManual = null;
         renderBuilder();
       });
-      box.appendChild(fieldRow('<span style="color:#9aa4b2;">From planet</span>', sel));
+      box.appendChild(fieldRow('<span style="color:#9aa4b2;">出发星球</span>', sel));
     }
     for (const [k, ent] of Object.entries(b.res)) {
       const r = RES_BY_K[k];
@@ -709,7 +710,7 @@ async function renderBuilder() {
     }
     const cargoShips = await cargoShipsOf(b.src, Object.keys(b.res).map(k => RES_BY_K[k].cargo));
     const cw = document.createElement('div'); cw.style.cssText = 'border-top:1px solid #21262d; margin-top:10px; padding-top:8px;';
-    cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">Transport ships</div>';
+    cw.innerHTML = '<div style="color:#8b949e; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px;">运输舰船</div>';
     box.appendChild(cw);
     const capLine = document.createElement('div'); capLine.style.cssText = 'font-size:0.82rem; margin-top:4px;';
     const amountsOf = () => Object.fromEntries(Object.entries(b.res).map(([k, e]) => [RES_BY_K[k].cargo, e.amount]));
@@ -719,27 +720,27 @@ async function renderBuilder() {
     const refreshCargo = () => {
       const need = totalCargo();
       const short = residualAfter(b.cargoManual, amountsOf(), cargoShips);
-      capLine.innerHTML = `Carrying <b style="color:${short <= 0 ? '#56d364' : '#ff7b72'}">${fmt(need - short)}</b> / ${fmt(need)}` +
-        (short > 0 ? ` <span style="color:#ff7b72;">· short ${fmt(short)}</span>` : '');
+      capLine.innerHTML = `已装载 <b style="color:${short <= 0 ? '#56d364' : '#ff7b72'}">${fmt(need - short)}</b> / ${fmt(need)}` +
+        (short > 0 ? ` <span style="color:#ff7b72;">· 缺少运力 ${fmt(short)}</span>` : '');
       send.disabled = need <= 0 || short > 0;
       refreshFuel();
     };
     for (const cs of cargoShips) {
       const inp = numInput(b.cargoManual[cs.shipDefId] || 0, cs.avail);
       inp.addEventListener('input', () => { b.cargoManual[cs.shipDefId] = Math.min(cs.avail, Math.max(0, parseInt(inp.value, 10) || 0)); refreshCargo(); });
-      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ ${fmt(cs.avail)} · ${fmt(cs.cap)} ea</span>`, withStepper(inp, cs.avail)));
+      cw.appendChild(fieldRow(`${esc(cs.name)} <span style="color:#6e7681;">/ 可用 ${fmt(cs.avail)} · 每艘 ${fmt(cs.cap)}</span>`, withStepper(inp, cs.avail)));
     }
-    if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">No cargo ships on this colony.</span>';
+    if (!cargoShips.length) cw.innerHTML += '<span style="color:#ff7b72; font-size:0.82rem;">该殖民地没有货运舰船。</span>';
     cw.appendChild(capLine);
     getShips = () => cargoShips.map(cs => ({ shipDefId: cs.shipDefId, quantity: b.cargoManual[cs.shipDefId] || 0 })).filter(s => s.quantity > 0);
     fuelSrc = b.src.id; fuelSys = b.target.systemId;
     box.append(fuelLine);
     refreshCargo();
   } else {   // ship
-    const sVerb = b.src.kind === 'Moon' ? 'Recall ships' : b.target.kind === 'Moon' ? 'Send ships' : toOutpost ? 'Deploy ships' : 'Relocate ships';
+    const sVerb = b.src.kind === 'Moon' ? '召回舰船' : b.target.kind === 'Moon' ? '派送舰船' : toOutpost ? '部署舰船' : '调动舰船';
     head.innerHTML = `<b style="color:#e6edf3;">${sVerb}</b>` +
       `<span style="color:#f0883e;">${esc(b.src.name)} → ${esc(b.target.name)}</span>` +
-      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">drag more onto ${esc(b.target.name)} to add</span>`;
+      `<span style="color:#6e7681; font-size:0.8rem; margin-left:6px;">继续拖到 ${esc(b.target.name)} 可追加</span>`;
     for (const [id, ent] of Object.entries(b.ships)) {
       const inp = numInput(ent.qty, ent.max);
       inp.addEventListener('input', () => { ent.qty = Math.min(ent.max, Math.max(0, parseInt(inp.value, 10) || 0)); refreshFuel(); send.disabled = !getShips().length; });
@@ -755,9 +756,9 @@ async function renderBuilder() {
   async function refreshFuel() {
     const ships = getShips();
     if (!ships.length) { fuelLine.textContent = ''; return; }
-    fuelLine.textContent = 'Fuel: …';
+    fuelLine.textContent = '燃料：…';
     const est = await fuelEstimate(fuelSrc, fuelSys, ships).catch(() => null);
-    fuelLine.textContent = est ? `Fuel: ${fmt(est.fuelCost)} H · ETA ${fmtDur(est.travelTime)}${est.inRange === false ? ' · OUT OF RANGE' : ''}` : 'Fuel: —';
+    fuelLine.textContent = est ? `燃料：${fmt(est.fuelCost)} 氢 · 预计用时 ${fmtDur(est.travelTime)}${est.inRange === false ? ' · 超出航程' : ''}` : '燃料：—';
     // Server-authoritative capacity check: fuel-estimate returns the fleet's
     // real totalCargoCapacity (bonuses applied game-side), unlike our own
     // effCap() which reverse-engineers the bonus from research effects and can
@@ -767,8 +768,8 @@ async function renderBuilder() {
       const need = getCargoNeed();
       if (need > est.totalCargoCapacity) {
         send.disabled = true;
-        status.innerHTML = `<span style="color:#ff7b72;">Cargo hold exceeds fleet capacity: ${fmt(need)} > ${fmt(est.totalCargoCapacity)}</span>`;
-      } else if (status.textContent.startsWith('Cargo hold exceeds')) {
+        status.innerHTML = `<span style="color:#ff7b72;">货物超过舰队运力：${fmt(need)} > ${fmt(est.totalCargoCapacity)}</span>`;
+      } else if (status.textContent.startsWith('货物超过舰队运力')) {
         status.textContent = '';
       }
     }
@@ -801,7 +802,7 @@ async function renderBuilder() {
 
   send.onclick = async () => {
     if (!getShips().length) return;
-    send.disabled = true; status.textContent = 'Sending…';
+    send.disabled = true; status.textContent = '派出中…';
     try { const s = sendSpec(); await jpost(s.path, s.body); builder = null; refresh(); }
     catch (e) { status.innerHTML = `<span style="color:#ff7b72;">${e.message}</span>`; send.disabled = false; }
   };
@@ -821,8 +822,8 @@ function injectButton() {
   const btn = document.createElement('button');
   btn.id = 'nx-logistics-btn';
   btn.type = 'button';
-  btn.title = 'Quartermaster — fleet & resources overview (addon)';
-  btn.textContent = '📦 Quartermaster';
+  btn.title = '军需官 — 舰队与资源总览（助手）';
+  btn.textContent = '📦 军需官';
   btn.style.cssText = 'margin:0 10px; padding:7px 14px; border-radius:7px; cursor:pointer;' +
     'font-size:0.92rem; font-weight:600; border:1px solid #3a4256; background:#1a1f2b; color:#eee;';
   btn.addEventListener('click', openView);

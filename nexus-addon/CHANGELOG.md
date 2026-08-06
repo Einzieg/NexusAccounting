@@ -1,8 +1,25 @@
-# Changelog
+# 更新日志
 
-All notable changes to the Nexus Accounting Firefox addon.
+记录 Nexus Accounting 浏览器助手的重要变更。
 
-Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
+
+## [1.8.1] - 2026-08-06
+
+### 变更
+- **完整中文界面**：汉化仪表盘、战斗模拟器、游戏内侧栏、帝国总览、军需官、升级规划器、状态提示、确认框和系统通知。
+- **中文项目说明**：重写 README，并汉化扩展名称、描述和最新更新说明。
+- 保留 API 字段、存储键、服务器 ID 和游戏协议枚举的原始值，避免影响 NX-S0 与 NX-NF 的兼容性。
+
+## [1.8.0] - 2026-08-06
+
+### Added
+- **New Frontier support**: the addon now runs on both Season 0 (`NX-S0`) and
+  New Frontier (`NX-NF`), routes API/cookie/game-tab requests to the selected
+  universe, and exposes a server selector in the dashboard.
+- **Per-server local data**: reports, aggregates, caches and preferences are
+  stored separately for each universe. Existing unscoped data is migrated to
+  Season 0 automatically.
 
 ## [1.7.6] - 2026-07-22
 

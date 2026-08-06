@@ -22,7 +22,9 @@ import { getEventBreakdownForMode, getResourcesLostForMode, getSeriesForMode, ge
 import { renderTechTreeTab } from './tabs/techtree.js';
 
 export async function loadAll() {
-  setStore(await browser.storage.local.get([
+  const server = await globalThis.nexusStorage.getActiveServer();
+  document.getElementById('server-select').value = server.key;
+  setStore(await globalThis.nexusStorage.get([
     'totals', 'daily', 'hourly', 'resources_lost', 'event_breakdown',
     'recent_reports', 'ships', 'last_scrape', 'last_error', 'records_cap',
     'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
@@ -48,7 +50,7 @@ export async function loadAll() {
 export async function updateStorageFooter() {
   const el = document.getElementById('storage-footer');
   if (!el) return;
-  const all = await browser.storage.local.get(null);
+  const all = await globalThis.nexusStorage.get(null);
   const idx = all.archive_index || {};
   const reports = (idx.survey?.count || all.recent_reports?.length || 0) +
     (idx.pirate?.count || all.pirate_recent_reports?.length || 0) +
@@ -58,8 +60,8 @@ export async function updateStorageFooter() {
   let bytes = 0;
   try { bytes = JSON.stringify(all).length; } catch { /* ignore */ }
   const size = bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
-  const backup = all.last_backup ? new Date(all.last_backup).toLocaleDateString() : 'never';
-  el.textContent = `${reports.toLocaleString()} reports archived · ~${size} stored · last auto-backup: ${backup}`;
+  const backup = all.last_backup ? new Date(all.last_backup).toLocaleDateString() : '从未';
+  el.textContent = `已归档 ${reports.toLocaleString()} 条报告 · 占用约 ${size} · 最近自动备份：${backup}`;
 }
 
 export function updateStatus(lastScrape, lastError) {
@@ -68,19 +70,19 @@ export function updateStatus(lastScrape, lastError) {
   if (lastError) {
     const span = document.createElement('span');
     span.className = 'error';
-    span.textContent = `Error: ${lastError}`;
+    span.textContent = `错误：${lastError}`;
     el.appendChild(span);
   } else if (lastScrape) {
-    el.textContent = `Last scrape: ${new Date(lastScrape).toLocaleString()}`;
+    el.textContent = `最近同步：${new Date(lastScrape).toLocaleString()}`;
   } else {
-    el.textContent = 'Never scraped.';
+    el.textContent = '尚未同步。';
   }
   if (store.stats_drift) {
     const warn = document.createElement('span');
     warn.className = 'error';
     warn.style.marginLeft = '10px';
-    warn.title = `Fields out of sync: ${(store.stats_drift.fields || []).join(', ')}`;
-    warn.textContent = '⚠ Stats drift detected — click "Rebuild stats".';
+    warn.title = `不同步的字段：${(store.stats_drift.fields || []).join(', ')}`;
+    warn.textContent = '⚠ 检测到统计偏差，请点击“重建统计”。';
     el.appendChild(warn);
   }
 }
@@ -214,17 +216,30 @@ export function positionControls() {
 
 // ── Controls ───────────────────────────────────────────────────────────────
 
+document.getElementById('server-select').addEventListener('change', async function () {
+  const previous = (await globalThis.nexusStorage.getActiveServer()).key;
+  this.disabled = true;
+  const result = await browser.runtime.sendMessage({ type: 'SET_GAME_SERVER', serverKey: this.value });
+  if (result?.error) {
+    this.value = previous;
+    this.disabled = false;
+    await infoDialog('切换服务器失败', result.error);
+    return;
+  }
+  window.location.reload();
+});
+
 document.getElementById('btn-scrape').addEventListener('click', async function () {
   this.disabled = true;
-  this.textContent = 'Scraping…';
+  this.textContent = '正在同步…';
   try {
     await browser.runtime.sendMessage({ type: 'SCRAPE_NOW' });
     await loadAll();
-    this.textContent = 'Done ✓';
+    this.textContent = '完成 ✓';
   } catch {
-    this.textContent = 'Error';
+    this.textContent = '错误';
   } finally {
-    setTimeout(() => { this.disabled = false; this.textContent = 'Scrape Now'; }, 2000);
+    setTimeout(() => { this.disabled = false; this.textContent = '立即同步'; }, 2000);
   }
 });
 
@@ -260,11 +275,12 @@ document.getElementById('window-to').addEventListener('change', onViewChange);
 document.getElementById('event-select').addEventListener('change', () => { setCurrentPage(1); renderAll(); });
 
 document.getElementById('btn-reset').addEventListener('click', async function () {
-  if (!confirm('Drop all recorded data? A backup is written to Downloads/NexusAccounting first.')) return;
+  const server = await globalThis.nexusStorage.getActiveServer();
+  if (!confirm(`确定清空 ${server.name}（${server.id}）的全部记录数据吗？操作前会先将备份写入 Downloads/NexusAccounting。`)) return;
   await browser.runtime.sendMessage({ type: 'BACKUP_NOW', reason: 'pre-reset' });
-  const { records_cap } = await browser.storage.local.get('records_cap');
-  await browser.storage.local.clear();
-  if (records_cap) await browser.storage.local.set({ records_cap });
+  const { records_cap } = await globalThis.nexusStorage.get('records_cap');
+  await globalThis.nexusStorage.clear();
+  if (records_cap) await globalThis.nexusStorage.set({ records_cap });
   await loadAll();
 });
 
@@ -282,19 +298,19 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
   const raw = parseInt(input.value.trim(), 10);
   if (isNaN(raw) || raw < 0) return;
   const val = raw === 0 ? Infinity : raw;
-  await browser.storage.local.set({ records_cap: val });
+  await globalThis.nexusStorage.set({ records_cap: val });
   input.value = val === Infinity ? 0 : val;
   input.style.borderColor = '#30363d';
   input.style.color = '#e6edf3';
   document.getElementById('cap-warning').style.display = 'none';
-  this.textContent = 'Saved ✓';
-  setTimeout(() => { this.textContent = 'Save'; }, 1500);
+  this.textContent = '已保存 ✓';
+  setTimeout(() => { this.textContent = '保存'; }, 1500);
 });
 
 // ── Rebuild aggregates ─────────────────────────────────────────────────────
 
 document.getElementById('btn-rebuild').addEventListener('click', async function () {
-  const s = await browser.storage.local.get([
+  const s = await globalThis.nexusStorage.get([
     'archive_index',
     'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports', 'xeno_recent_reports',
   ]);
@@ -305,43 +321,44 @@ document.getElementById('btn-rebuild').addEventListener('click', async function 
             (idx.exp?.count || (s.exp_recent_reports || []).length) +
             (idx.xeno?.count || (s.xeno_recent_reports || []).length);
   if (!confirm(
-    `Recompute all aggregated stats from the ${n} archived report records?\n\n` +
-    'Mining alloys/rares, stolen-cargo breakdown and mining loss valuation ' +
-    'cannot be reconstructed and will reset.')) return;
+    `确定根据已归档的 ${n} 条报告重新计算全部汇总统计吗？\n\n` +
+    '采矿合金/稀有资源、被盗货物明细和采矿损失估值无法重建，将被重置。')) return;
 
   this.disabled = true;
-  this.textContent = 'Rebuilding…';
+  this.textContent = '正在重建…';
   try {
     await browser.runtime.sendMessage({ type: 'REBUILD_AGGREGATES' });
     await loadAll();
-    this.textContent = 'Rebuilt ✓';
+    this.textContent = '重建完成 ✓';
   } catch {
-    this.textContent = 'Error';
+    this.textContent = '错误';
   } finally {
-    setTimeout(() => { this.disabled = false; this.textContent = 'Rebuild stats'; }, 2000);
+    setTimeout(() => { this.disabled = false; this.textContent = '重建统计'; }, 2000);
   }
 });
 
 // ── Export / Import ────────────────────────────────────────────────────────
 
 document.getElementById('btn-export').addEventListener('click', async function () {
-  const data = await browser.storage.local.get(null);
+  const server = await globalThis.nexusStorage.getActiveServer();
+  const data = await globalThis.nexusStorage.get(null);
   // JSON cannot represent Infinity (unlimited records cap) — store as 0.
   if (data.records_cap === Infinity) data.records_cap = 0;
   const payload = {
     nexus_accounting_backup: 1,
     exported_at: new Date().toISOString(),
+    server_key: server.key,
     data,
   };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `nexus-accounting-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `nexus-accounting-${server.key}-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  this.textContent = 'Exported ✓';
-  setTimeout(() => { this.textContent = 'Export JSON'; }, 2000);
+  this.textContent = '已导出 ✓';
+  setTimeout(() => { this.textContent = '导出 JSON'; }, 2000);
 });
 
 document.getElementById('btn-import').addEventListener('click', () => {
@@ -368,15 +385,15 @@ export function validateBackupData(data) {
     'pirate_debris_total', 'archive_index',
   ];
   for (const k of arrays) {
-    if (k in data && !Array.isArray(data[k])) throw new Error(`backup field "${k}" should be a list`);
+    if (k in data && !Array.isArray(data[k])) throw new Error(`备份字段“${k}”应为列表`);
   }
   for (const k of objects) {
     if (k in data && (typeof data[k] !== 'object' || data[k] === null || Array.isArray(data[k]))) {
-      throw new Error(`backup field "${k}" should be an object`);
+      throw new Error(`备份字段“${k}”应为对象`);
     }
   }
   if ('records_cap' in data && typeof data.records_cap !== 'number') {
-    throw new Error('backup field "records_cap" should be a number');
+    throw new Error('备份字段“records_cap”应为数字');
   }
 }
 
@@ -389,24 +406,27 @@ document.getElementById('import-file').addEventListener('change', async function
   try {
     const payload = JSON.parse(await file.text());
     if (!payload || payload.nexus_accounting_backup !== 1 || !payload.data || Array.isArray(payload.data) || typeof payload.data !== 'object') {
-      throw new Error('not a Nexus Accounting backup file');
+      throw new Error('该文件不是 Nexus Accounting 备份');
     }
     validateBackupData(payload.data);
-    const exportedAt = payload.exported_at ? new Date(payload.exported_at).toLocaleString() : 'unknown date';
-    if (!confirm(`Replace ALL current data with backup from ${exportedAt}?\n\nA snapshot of the current data is written to Downloads/NexusAccounting first.`)) return;
+    const server = await globalThis.nexusStorage.getActiveServer();
+    const sourceServer = payload.server_key && globalThis.nexusStorage.servers[payload.server_key];
+    const exportedAt = payload.exported_at ? new Date(payload.exported_at).toLocaleString() : '未知日期';
+    const sourceLabel = sourceServer ? `${sourceServer.name}（${sourceServer.id}）` : '未标注服务器的旧版备份';
+    if (!confirm(`确定用 ${sourceLabel} 在 ${exportedAt} 导出的备份替换 ${server.name}（${server.id}）的全部数据吗？\n\n操作前会先将当前数据快照写入 Downloads/NexusAccounting。`)) return;
 
     await browser.runtime.sendMessage({ type: 'BACKUP_NOW', reason: 'pre-import' });
     const data = payload.data;
     if (data.records_cap === 0) data.records_cap = Infinity;
-    await browser.storage.local.clear();
-    await browser.storage.local.set(data);
+    await globalThis.nexusStorage.clear();
+    await globalThis.nexusStorage.set(data);
     await loadAll();
-    btn.textContent = 'Imported ✓';
+    btn.textContent = '已导入 ✓';
   } catch (e) {
-    alert(`Import failed: ${e.message}`);
-    btn.textContent = 'Error';
+    alert(`导入失败：${e.message}`);
+    btn.textContent = '错误';
   } finally {
-    setTimeout(() => { btn.textContent = 'Import JSON'; }, 2000);
+    setTimeout(() => { btn.textContent = '导入 JSON'; }, 2000);
   }
 });
 
@@ -416,7 +436,7 @@ document.getElementById('import-file').addEventListener('change', async function
 // down to the last 3 days. Runs once (not on every scrape-driven reload).
 const PURGE_WARN_THRESHOLD = 10000;
 async function maybeWarnStorage() {
-  const all = await browser.storage.local.get([
+  const all = await globalThis.nexusStorage.get([
     'archive_index', 'recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports', 'xeno_recent_reports',
   ]);
   const idx = all.archive_index || {};
@@ -426,8 +446,8 @@ async function maybeWarnStorage() {
     (idx.exp?.count || all.exp_recent_reports?.length || 0) +
     (idx.xeno?.count || all.xeno_recent_reports?.length || 0);
   if (total <= PURGE_WARN_THRESHOLD) return;
-  if (!await confirmDialog(`⚠ Large storage: ${total.toLocaleString()} reports kept.\n\n` +
-    'Purge old data and keep only the last 3 days?')) return;
+  if (!await confirmDialog(`⚠ 本地数据较大：已保存 ${total.toLocaleString()} 条报告。\n\n` +
+    '是否清理旧数据，只保留最近 3 天？')) return;
   await browser.runtime.sendMessage({ type: 'PURGE_OLD', days: 3 });
   await loadAll();
 }
@@ -439,18 +459,18 @@ maybeShowWhatsNew();
 // Show the latest changelog section once after an update (flag set by the
 // background's onInstalled handler).
 async function maybeShowWhatsNew() {
-  const { whatsnew_pending } = await browser.storage.local.get('whatsnew_pending');
+  const { whatsnew_pending } = await globalThis.nexusStorage.get('whatsnew_pending');
   if (!whatsnew_pending) return;
-  await browser.storage.local.remove('whatsnew_pending');
-  let body = 'See CHANGELOG.md for details.';
+  await globalThis.nexusStorage.remove('whatsnew_pending');
+  let body = '详细信息请参阅 CHANGELOG.md。';
   try {
     const md = await (await fetch(browser.runtime.getURL('CHANGELOG.md'))).text();
     const m = md.match(/## \[[^\]]+\][^\n]*\n([\s\S]*?)(?=\n## \[|$)/);
     if (m) body = renderMarkdown(m[1].trim());
   } catch { /* keep fallback */ }
-  infoDialog(`What's new in v${whatsnew_pending}`, body);
+  infoDialog(`v${whatsnew_pending} 更新内容`, body);
 }
 
-browser.storage.onChanged.addListener((changes, area) => {
+globalThis.nexusStorage.onChanged.addListener((changes, area) => {
   if (area === 'local' && (changes.last_scrape || changes.totals || changes.pirate_totals)) loadAll();
 });

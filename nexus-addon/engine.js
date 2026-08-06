@@ -62,23 +62,23 @@ function rapidFireShots(attackerKey, targetKey) {
 // apply as one multiplier. `also` is a second effect of the same tech
 // (Advanced Shielding boosts shield HP and reduces damage).
 const TECHS = [
-  { key: 'kinetic_weapons',    name: 'Kinetic Weapons',     group: 'Weapons', perLvl: 0.03, applies: 'weapon', weapon: 'kinetic' },
-  { key: 'laser_weapons',      name: 'Laser Weapons',       group: 'Weapons', perLvl: 0.03, applies: 'weapon', weapon: 'laser' },
-  { key: 'plasma_weapons',     name: 'Plasma Weapons',      group: 'Weapons', perLvl: 0.03, applies: 'weapon', weapon: 'plasma' },
-  { key: 'missile_systems',    name: 'Missile Systems',     group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'missile' },
-  { key: 'torpedo_systems',    name: 'Torpedo Systems',     group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'missile' },
-  { key: 'ion_cannons',        name: 'Ion Cannons',         group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'ion' },
-  { key: 'fighter_doctrine',   name: 'Fighter Doctrine',    group: 'Weapons', perLvl: 0.02, applies: 'weapon', weapon: 'laser' },
-  { key: 'bomber_wing',        name: 'Bomber Wing',         group: 'Weapons', perLvl: 0.02, applies: 'ship', ship: 'bomber' },
-  { key: 'weapons_overcharge', name: 'Weapons Overcharge',  group: 'Weapons', perLvl: 0.03, applies: 'weapon_all' },
-  { key: 'basic_armor',        name: 'Basic Armor Plating', group: 'Hull',    perLvl: 0.02, applies: 'hull' },
-  { key: 'composite_armor',    name: 'Composite Armor',     group: 'Hull',    perLvl: 0.03, applies: 'hull' },
-  { key: 'heavy_armor',        name: 'Heavy Armor',         group: 'Hull',    perLvl: 0.03, applies: 'hull' },
-  { key: 'ship_mastery',       name: 'Ship Mastery',        group: 'Hull',    perLvl: 0.02, applies: 'hull' },
-  { key: 'shield_theory',      name: 'Shield Theory',       group: 'Shield',  perLvl: 0.02, applies: 'damage_reduction' },
-  { key: 'advanced_shielding', name: 'Advanced Shielding',  group: 'Shield',  perLvl: 0.10, applies: 'shield',
+  { key: 'kinetic_weapons',    name: '动能武器',     group: '武器', perLvl: 0.03, applies: 'weapon', weapon: 'kinetic' },
+  { key: 'laser_weapons',      name: '激光武器',     group: '武器', perLvl: 0.03, applies: 'weapon', weapon: 'laser' },
+  { key: 'plasma_weapons',     name: '等离子武器',   group: '武器', perLvl: 0.03, applies: 'weapon', weapon: 'plasma' },
+  { key: 'missile_systems',    name: '导弹系统',     group: '武器', perLvl: 0.02, applies: 'weapon', weapon: 'missile' },
+  { key: 'torpedo_systems',    name: '鱼雷系统',     group: '武器', perLvl: 0.02, applies: 'weapon', weapon: 'missile' },
+  { key: 'ion_cannons',        name: '离子炮',       group: '武器', perLvl: 0.02, applies: 'weapon', weapon: 'ion' },
+  { key: 'fighter_doctrine',   name: '战斗机学说',   group: '武器', perLvl: 0.02, applies: 'weapon', weapon: 'laser' },
+  { key: 'bomber_wing',        name: '轰炸机联队',   group: '武器', perLvl: 0.02, applies: 'ship', ship: 'bomber' },
+  { key: 'weapons_overcharge', name: '武器过载',     group: '武器', perLvl: 0.03, applies: 'weapon_all' },
+  { key: 'basic_armor',        name: '基础装甲板',   group: '舰体', perLvl: 0.02, applies: 'hull' },
+  { key: 'composite_armor',    name: '复合装甲',     group: '舰体', perLvl: 0.03, applies: 'hull' },
+  { key: 'heavy_armor',        name: '重型装甲',     group: '舰体', perLvl: 0.03, applies: 'hull' },
+  { key: 'ship_mastery',       name: '舰船精通',     group: '舰体', perLvl: 0.02, applies: 'hull' },
+  { key: 'shield_theory',      name: '护盾理论',     group: '护盾', perLvl: 0.02, applies: 'damage_reduction' },
+  { key: 'advanced_shielding', name: '高级护盾',     group: '护盾', perLvl: 0.10, applies: 'shield',
     also: { perLvl: 0.02, applies: 'damage_reduction' } },
-  { key: 'adaptive_shields',   name: 'Adaptive Shields',    group: 'Shield',  perLvl: 0.03, applies: 'damage_reduction' },
+  { key: 'adaptive_shields',   name: '自适应护盾',   group: '护盾', perLvl: 0.03, applies: 'damage_reduction' },
 ];
 const TECH_MAX_LEVEL = 5;
 
@@ -271,37 +271,37 @@ function _roundJamMult(fleet) {
 // attacker damage. Index 0 = level 1.
 const DEFENSE_BUILDINGS = {
   missile_defense: {
-    name: 'Missile Defense', weaponType: 'missile', armorType: 'heavy',
+    name: '导弹防御阵列', weaponType: 'missile', armorType: 'heavy',
     atk:   [7, 18, 35, 61, 102, 165, 263, 415, 651, 1017, 1565, 2388, 3622, 5473, 8249],
     hp:    [88, 225, 438, 767, 1277, 2068, 3295, 5197, 8145, 12715, 19570, 29853, 45276, 68413, 103117],
     units: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75],
   },
   laser_defense: {
-    name: 'Laser Defense', weaponType: 'laser', armorType: 'heavy',
+    name: '激光防御阵列', weaponType: 'laser', armorType: 'heavy',
     atk:   [10, 27, 54, 100, 176, 300, 506, 846, 1406, 2331, 3718, 5798, 8918, 13599, 20620],
     hp:    [173, 459, 931, 1709, 2994, 5115, 8613, 14386, 23912, 39630, 63207, 98573, 151622, 231195, 350555],
     units: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75],
   },
   railgun_defense: {
-    name: 'Railgun Defense', weaponType: 'kinetic', armorType: 'heavy',
+    name: '轨道炮防御阵列', weaponType: 'kinetic', armorType: 'heavy',
     atk:   [14, 39, 81, 155, 281, 497, 870, 1511, 2614, 4512, 7357, 11626, 18029, 27634, 42041],
     hp:    [208, 565, 1180, 2238, 4059, 7190, 12575, 21838, 37770, 65174, 106281, 167940, 260430, 399164, 607265],
     units: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60],
   },
   plasma_defense: {
-    name: 'Plasma Defense', weaponType: 'plasma', armorType: 'heavy',
+    name: '等离子防御阵列', weaponType: 'plasma', armorType: 'heavy',
     atk:   [19, 55, 121, 240, 457, 853, 1572, 2882, 5266, 9604, 16111, 25872, 40513, 62475, 95419],
     hp:    [561, 1582, 3439, 6821, 12976, 24178, 44567, 81674, 149210, 272125, 456497, 733056, 1147894, 1770152, 2703538],
     units: [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45],
   },
   ion_defense: {
-    name: 'Ion Defense', weaponType: 'ion', armorType: 'heavy',
+    name: '离子防御阵列', weaponType: 'ion', armorType: 'heavy',
     atk:   [13, 36, 75, 141, 251, 435, 746, 1267, 2143, 3614, 5820, 9131, 14096, 21544, 32715],
     hp:    [505, 1356, 2783, 5182, 9212, 15984, 27359, 46471, 78580, 132522, 213436, 334807, 516864, 789949, 1199577],
     units: [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60],
   },
   ew_system: {
-    name: 'EW System', weaponType: null, armorType: 'heavy',
+    name: '电子战系统', weaponType: null, armorType: 'heavy',
     atk:   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     hp:    [222, 588, 1192, 2189, 3834, 6549, 11028, 18420, 30615, 50739],
     units: [3, 6, 9, 12, 15, 18, 21, 24, 27, 30],

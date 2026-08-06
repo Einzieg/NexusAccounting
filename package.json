@@ -1,7 +1,7 @@
 {
   "name": "nexusaccounting",
   "version": "1.0.0",
-  "description": "Firefox addon that tracks survey mission data from [Nexus Legacy](https://s0.nexuslegacy.space).",
+  "description": "支持 Nexus Legacy NX-S0 与 NX-NF 的浏览器游戏助手。",
   "type": "module",
   "main": "index.js",
   "directories": {

@@ -4,7 +4,7 @@
 // `window.__nxQueue`:
 //   __nxQueue.add({ kind, key, name, from, target })  — queue an item
 //   __nxQueue.mountPanel(overlay)                      — render the list beside a planner
-// The queue persists in ext.storage.local and is reorderable by drag & drop.
+// The queue persists in globalThis.nexusStorage and is reorderable by drag & drop.
 //
 // Left-clicking a row toggles it in/out of a selection. The panel then sums
 // window.__nxUpgradeNeed[kind]() across every selected item and subtracts the
@@ -15,12 +15,14 @@
 // Quartermaster delivery has one destination.
 if (!window.__nxQueue) {
 (function () {
-const ext = (typeof browser !== 'undefined' ? browser : chrome);
 const KEY = 'nx_upgrade_queue';
 const ICON = { building: '🏗️', tech: '🔬', ship: '🚀' };
 const camel = k => k.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 const fmt = n => Math.round(n || 0).toLocaleString();
-const labelOf = cargo => cargo.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const RES_LABELS = { ore: '矿石', silicates: '硅酸盐', hydrogen: '氢', alloys: '合金',
+  cryo_ice: '低温冰', quantum_dust: '量子尘', plasma_core: '等离子核心',
+  bio_extract: '生物提取物', dark_matter: '暗物质', antimatter: '反物质' };
+const labelOf = cargo => RES_LABELS[cargo] || cargo.replace(/_/g, ' ');
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 
 let items = [];
@@ -31,11 +33,11 @@ const selected = new Set();   // item ids
 
 async function load() {
   if (loaded) return;
-  const got = await ext.storage.local.get(KEY);
+  const got = await globalThis.nexusStorage.get(KEY);
   items = (Array.isArray(got[KEY]) ? got[KEY] : []).map(migrate);
   loaded = true;
 }
-function save() { ext.storage.local.set({ [KEY]: items }); }
+function save() { globalThis.nexusStorage.set({ [KEY]: items }); }
 
 // A card stores { id, kind, key, name, base, steps }: base = the game level it
 // was captured at, steps = how many levels it advances. from/target are
@@ -83,7 +85,7 @@ function render() {
   if (!items.length) {
     const empty = document.createElement('div');
     empty.style.cssText = 'color:#484f58; padding:10px 2px; font-size:.9rem;';
-    empty.textContent = 'Empty — add a building, tech, or ship from a planner.';
+    empty.textContent = '待办为空，请从建筑、科技或舰船规划器中添加。';
     listEl.appendChild(empty);
     return;
   }
@@ -94,13 +96,13 @@ function render() {
     row.dataset.i = String(i);
     row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:7px 8px; margin:6px 0;' +
       `background:${isSel ? '#132d1d' : '#0d1117'}; border:1px solid ${isSel ? '#2ea043' : '#21262d'}; border-radius:7px; cursor:pointer;`;
-    row.title = 'Select to include in the resource total';
+    row.title = '选择后计入资源合计';
     row.innerHTML =
       `<span style="opacity:.5; cursor:grab;">⋮⋮</span>` +
       `<span style="font-size:15px;">${ICON[it.kind] || '•'}</span>` +
       `<div style="flex:1; min-width:0;">` +
         `<div style="color:#e6edf3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${it.name || it.key}</div>` +
-        `<div style="color:#8b949e; font-size:.8rem;">L${from} → ${target}` +
+        `<div style="color:#8b949e; font-size:.8rem;">第 ${from} 级 → 第 ${target} 级` +
           (it.planet ? ` · <span style="color:#6e7681;">${it.planet}</span>` : '') + `</div>` +
       `</div>`;
     row.onclick = () => {
@@ -110,7 +112,7 @@ function render() {
     };
     const del = document.createElement('button');
     del.type = 'button'; del.textContent = '✕';
-    del.title = 'Remove';
+    del.title = '移除';
     del.style.cssText = 'background:none; border:none; color:#6e7681; cursor:pointer; font-size:14px; padding:2px 4px;';
     del.onclick = e => {
       e.stopPropagation();
@@ -149,12 +151,12 @@ async function renderAgg() {
 
   const planetIds = new Set(sel.map(({ it }) => it.planetId));
   if (planetIds.size > 1) {
-    aggEl.innerHTML = '<div style="color:#ff7b72; font-size:.85rem; padding:8px 2px;">Select items on one planet only.</div>';
+    aggEl.innerHTML = '<div style="color:#ff7b72; font-size:.85rem; padding:8px 2px;">只能选择同一星球上的项目。</div>';
     return;
   }
   const planetId = [...planetIds][0];
   if (planetId == null) { aggEl.textContent = ''; return; }
-  aggEl.innerHTML = '<div style="color:#8b949e; font-size:.85rem; padding:8px 2px;">Computing…</div>';
+  aggEl.innerHTML = '<div style="color:#8b949e; font-size:.85rem; padding:8px 2px;">计算中…</div>';
 
   let need = {}, pl;
   try {
@@ -165,12 +167,12 @@ async function renderAgg() {
     if (token !== aggToken) return;
     for (const part of parts) for (const [k, v] of Object.entries(part || {})) need[k] = (need[k] || 0) + v;
     const r = await fetch(`/api/planets/${planetId}`, { credentials: 'include' });
-    if (!r.ok) throw new Error(`planet ${planetId} → ${r.status}`);
+    if (!r.ok) throw new Error(`星球 ${planetId} → ${r.status}`);
     const d = await r.json();
     pl = d.planet || d;
   } catch (e) {
     if (token !== aggToken) return;
-    aggEl.innerHTML = `<div style="color:#ff7b72; font-size:.85rem; padding:8px 2px;">Error: ${e.message}</div>`;
+    aggEl.innerHTML = `<div style="color:#ff7b72; font-size:.85rem; padding:8px 2px;">错误：${e.message}</div>`;
     return;
   }
   if (token !== aggToken) return;
@@ -183,10 +185,10 @@ function renderAggTable(need, pl, planetId) {
   const numCell = 'text-align:right; padding:4px 6px; border-left:1px solid #21262d;';
   const head = document.createElement('div');
   head.style.cssText = cols + ' color:#8b949e; font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; border-top:1px solid #30363d; border-bottom:1px solid #30363d; margin-top:6px; padding-top:6px;';
-  head.innerHTML = '<div style="padding:4px 0;">Selected</div>' +
-    `<div style="${numCell}">Need</div>` +
-    `<div style="${numCell}">Have</div>` +
-    `<div style="${numCell}">Deficit</div>`;
+  head.innerHTML = '<div style="padding:4px 0;">已选项目</div>' +
+    `<div style="${numCell}">所需</div>` +
+    `<div style="${numCell}">现有</div>` +
+    `<div style="${numCell}">缺口</div>`;
   aggEl.appendChild(head);
 
   const deficit = {};
@@ -207,11 +209,11 @@ function renderAggTable(need, pl, planetId) {
   const totalShort = Object.values(deficit).reduce((s, v) => s + v, 0);
   const sendBtn = document.createElement('button');
   sendBtn.type = 'button';
-  sendBtn.textContent = 'Send via Quartermaster';
+  sendBtn.textContent = '由军需官运送';
   sendBtn.disabled = totalShort <= 0;
   sendBtn.style.cssText = 'margin-top:10px; width:100%; padding:7px 10px; border-radius:6px; border:1px solid #2ea043;' +
     `background:#238636; color:#fff; cursor:pointer;${totalShort <= 0 ? ' opacity:.5; cursor:default;' : ''}`;
-  sendBtn.title = totalShort <= 0 ? 'Selection already covered on that planet' : 'Open the Quartermaster to ship the deficit there';
+  sendBtn.title = totalShort <= 0 ? '该星球已有足够资源满足所选项目' : '打开军需官，将缺少的资源运送到该星球';
   sendBtn.onclick = () => {
     const nonZero = Object.fromEntries(Object.entries(deficit).filter(([, v]) => v > 0));
     if (window.__nxDeliverToPlanet) window.__nxDeliverToPlanet(planetId, nonZero);
@@ -241,7 +243,7 @@ window.__nxQueue = {
     const panel = document.createElement('div');
     panel.style.cssText = 'background:#12161f; color:#e6edf3; border:1px solid #30363d; border-radius:10px;' +
       'width:280px; max-width:92vw; max-height:88vh; overflow:auto; padding:16px 16px; margin-left:14px;';
-    panel.innerHTML = '<h2 style="margin:0 0 10px; font-size:1.05rem;">To-do</h2>';
+    panel.innerHTML = '<h2 style="margin:0 0 10px; font-size:1.05rem;">待办</h2>';
     listEl = document.createElement('div');
     listEl.style.cssText = 'max-height:260px; overflow-y:auto;';
     panel.appendChild(listEl);

@@ -14,47 +14,47 @@ const DASH_URL = ext.runtime.getURL('dashboard.html');
 
 // [section title, [ [lead, text], … ]]. `lead` is bolded; text may be ''.
 const SECTIONS = [
-  ['Getting started', [
-    ['Nexus Tracker', 'The main dashboard: opens in a new tab from the sidebar. Aggregates every report over time into charts, stat cards and sortable tables.'],
-    ['In-game tools', 'Empire View, User Guide, Ratio Calculator and Live Search Belts open from the Addon section of the sidebar; the Quartermaster opens from the 📦 button in the top bar. All render as overlays/panels on the game page itself.'],
-    ['Data', 'The addon scrapes the game APIs every 15 minutes (and on demand). Everything is stored locally in your browser; nothing is sent anywhere. Auto-backups are written to Downloads before each update.'],
+  ['开始使用', [
+    ['Nexus Accounting 助手', '主仪表盘可从侧栏在新标签页中打开，它会将各类报告汇总为图表、统计卡片和可排序表格。'],
+    ['游戏内工具', '可从侧栏的“助手”区域打开帝国总览、用户指南、比例计算器和小行星实时搜索；顶部栏的 📦 按钮可打开军需官。这些工具都直接显示在游戏页面上。'],
+    ['数据', '助手每 15 分钟或在你手动触发时采集游戏 API。所有数据都保存在浏览器本地，不会发送到其他地方；每次更新前会自动在下载目录生成备份。'],
   ]],
-  ['Dashboard tabs', [
-    ['Global', 'Combined resource totals and a "share by source" breakdown across all activities.'],
-    ['Surveys / Pirates / Mining / Expeditions', 'Per-activity totals, net gain (loot − ship-cost losses − fuel), loot-composition doughnut, daily/hourly charts and a sortable report table.'],
-    ['Battles', 'Every combat in one place: camp raids, mining/survey ambushes, expedition/wormhole fights and player-vs-player attacks. Click a row to expand the fleets (incl. enemy planetary defenses) and per-ship losses. Export CSV downloads the current view with fleets and per-round detail.'],
-    ['Debris', 'Aggregated debris collected over time.'],
-    ['Galaxy Scout (Finder)', 'Search explored systems for planets by type, size, temperature, moons, zone and ownership. Moons show type (colour-coded) + building slots.'],
-    ['Asteroids', 'Scan the nearest systems for asteroid fields, with a background live-search that notifies you when a new field matches your filter.'],
-    ['Fleet Templates', 'Named, planet-agnostic ship lists reused by any task. Mining ships are colour-coded by what they mine (see the legend).'],
-    ['Scouting', 'Launch surveys, investigations and debris/salvage collection: see below.'],
-    ['Market', 'Your orders, balances and trades, with ratio/left-% filters.'],
-    ['Tech Tree', 'Research overview and planning.'],
+  ['仪表盘页面', [
+    ['全局', '汇总所有活动的资源总量，并按来源显示占比。'],
+    ['勘测 / 海盗 / 采矿 / 远征', '显示各活动总量、净收益（战利品减去舰船损失成本和燃料）、战利品构成、按日或小时图表，以及可排序的报告表格。'],
+    ['战斗', '集中查看营地突袭、采矿或勘测伏击、远征或虫洞战斗及玩家对战。点击行可展开双方舰队、敌方星球防御和逐舰损失；导出 CSV 可下载当前视图及逐回合详情。'],
+    ['残骸', '汇总一段时间内回收的残骸。'],
+    ['星系侦察（查找器）', '按星球类型、大小、温度、月球、区域和归属搜索已探索星系；月球会显示类型、颜色和建筑槽位。'],
+    ['小行星', '扫描附近星系的小行星场；后台实时搜索会在发现符合筛选条件的新目标时通知你。'],
+    ['舰队模板', '创建与星球无关、可供多种任务重复使用的命名舰船列表；采矿舰船按开采资源着色。'],
+    ['侦察', '发起勘测、调查以及残骸或战利品回收，详见下一节。'],
+    ['市场', '查看订单、余额和交易，并支持比例及剩余百分比筛选。'],
+    ['科技树', '研究概览与规划。'],
   ]],
-  ['Scouting workflow', [
-    ['Survey', 'Sends a probe to the nearest un-surveyed system (respects the zone filter). Scanning fleets show a live progress bar in the "Scanning fleets in transit" panel.'],
-    ['Investigate', 'Anomalies awaiting investigation list with a one-click launch. The row keeps a progress bar (En route → Investigating → Returning) and stays until the fleet is home.'],
-    ['Debris & Salvage', 'Collect debris fields and post-investigation leftover salvage. Pick cargo ship types once; the addon auto-plans the fewest ships to carry it all and shows fuel, travel time and a progress bar.'],
+  ['侦察流程', [
+    ['勘测', '向最近且尚未勘测的星系发送探测器，并遵守区域筛选；执行中的舰队会显示实时进度条。'],
+    ['调查', '一键调查待处理异常；进度条依次显示航行、调查和返航阶段，舰队归航后该行才会移除。'],
+    ['残骸与战利品', '回收残骸场和调查后遗留的战利品。选择货运舰种后，助手会自动规划能够全部运走的最少舰船数，并显示燃料、航行时间和任务进度。'],
   ]],
-  ['On the galaxy map', [
-    ['Mining calculator', 'Each asteroid field card shows the optimal number of mining ships to clear it. A per-card picker sets the mining ship and cycle count (both persist).'],
-    ['⛏ Mining toggle', 'The breadcrumb switch hides/shows the injected pickers across all cards at once: green when on, grey-red when off.'],
+  ['星系地图工具', [
+    ['采矿计算器', '每张小行星场卡片会显示采完所需的最优舰船数；可为每张卡片设置是否带挖掘机及采矿周期，设置会自动保存。'],
+    ['⛏ 采矿开关', '面包屑导航中的开关可同时显示或隐藏所有卡片上的采矿工具；绿色表示开启，灰红色表示关闭。'],
   ]],
-  ['Empire View', [
-    ['Per-planet overview', 'A columnar summary of every planet plus a Total column: workforce (population, growth, free/assigned workers, energy), available resources (stored / capacity), resource-building levels + production, and infrastructure with live timers (slots, build queue, research, construction, ship queues).'],
+  ['帝国总览', [
+    ['逐星球概览', '按列汇总每个星球并提供合计：劳动力、资源库存与容量、资源建筑等级与产量，以及带实时倒计时的槽位、建造、研究、施工和舰船队列。'],
   ]],
-  ['Quartermaster (📦 top bar)', [
-    ['Overview', 'Total ships stationed across all colonies plus an "In flight" total (ships on active missions), and a card per planet/outpost with its resources and ships.'],
-    ['Move by drag & drop', 'Drag a resource or ship from a colony onto another to stage a transfer in the docked builder card at the top: adjust amounts and the transport ships (auto-planned by effective cargo capacity), see fuel + ETA, then Send.'],
-    ['What each drop does', 'Planet→planet: deliver resources / transfer (relocate) ships. Planet→outpost: supply resources / deploy ships. Drag an outpost resource onto a planet to collect it (choose source planet + resource types). Nothing sends until you press Send.'],
+  ['军需官（顶部栏 📦）', [
+    ['概览', '显示各殖民地驻扎舰船总数、任务中舰船总数，以及每个星球或前哨站的资源和舰船卡片。'],
+    ['拖放调度', '把一个殖民地的资源或舰船拖到另一个殖民地，可在顶部停靠的任务卡中调整数量和运输舰船；助手会按有效货舱容量自动规划，并显示燃料与预计抵达时间，确认后再派出。'],
+    ['拖放行为', '星球到星球：运送资源或调动舰船；星球到前哨站：补给资源或部署舰船；把前哨站资源拖到星球：收取资源并选择来源与资源类型。只有点击“派出”后才会真正执行。'],
   ]],
-  ['Other sidebar tools', [
-    ['Ratio Calculator', 'A floating calculator: enter any two of offer / pay / ratio and it infers the third.'],
-    ['Live Search Belts', 'Start/stop the background asteroid live-search and view its latest matches, with per-row fuel and a one-click mine.'],
+  ['其他侧栏工具', [
+    ['比例计算器', '输入提供量、支付量和比例中的任意两项，即可自动计算第三项。'],
+    ['实时搜索小行星带', '启动或停止后台小行星实时搜索，查看最新匹配目标、逐行燃料估算，并可一键派出采矿舰队。'],
   ]],
-  ['Good to know', [
-    ['Stats drift', 'If a "Stats drift detected" banner appears, click Rebuild stats once: it recomputes aggregates from the stored records.'],
-    ['Confirmations', 'Every fleet launch asks for confirmation and shows the exact ships being sent.'],
+  ['使用提示', [
+    ['统计漂移', '若出现“检测到统计漂移”横幅，请点击一次“重建统计”，系统会根据已保存记录重新计算汇总数据。'],
+    ['操作确认', '每次派出舰队前都会请求确认，并显示实际要派出的舰船。'],
   ]],
 ];
 
@@ -81,8 +81,8 @@ function openGuide() {
       'style="width:100%; height:100%; object-fit:cover; object-position:center 40%; display:block; opacity:0.85;">' +
     '<div style="position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; padding:0 24px;' +
       'background:linear-gradient(90deg, rgba(8,10,16,0.85) 0%, rgba(8,10,16,0.35) 60%, rgba(8,10,16,0) 100%);">' +
-      '<h1 style="margin:0; font-size:1.9rem; color:#e6edf3;">Nexus Accounting: User Guide</h1>' +
-      '<p style="margin:5px 0 0; color:#9aa4b2; font-size:0.9rem;">How the addon works, feature by feature</p>' +
+      '<h1 style="margin:0; font-size:1.9rem; color:#e6edf3;">Nexus Accounting：用户指南</h1>' +
+      '<p style="margin:5px 0 0; color:#9aa4b2; font-size:0.9rem;">逐项了解助手功能与使用方式</p>' +
     '</div>';
   page.appendChild(hero);
 
@@ -96,7 +96,7 @@ function openGuide() {
     for (const [lead, text] of items) {
       const row = document.createElement('div');
       row.style.cssText = 'padding-left:14px; border-left:2px solid #21262d;';
-      row.innerHTML = `<b style="color:#e6edf3;">${lead}</b>${text ? ': ' + text : ''}`;
+      row.innerHTML = `<b style="color:#e6edf3;">${lead}</b>${text ? '：' + text : ''}`;
       ul.appendChild(row);
     }
     page.appendChild(ul);
@@ -104,12 +104,12 @@ function openGuide() {
 
   const foot = document.createElement('p');
   foot.style.cssText = 'margin:22px 0 4px; color:#8b949e; font-size:0.85rem;';
-  foot.innerHTML = `Open the full dashboard: <a href="${DASH_URL}" target="_blank" rel="noopener" style="color:#58a6ff;">Nexus Tracker</a>.`;
+  foot.innerHTML = `打开完整仪表盘：<a href="${DASH_URL}" target="_blank" rel="noopener" style="color:#58a6ff;">Nexus Accounting 助手</a>。`;
   page.appendChild(foot);
 
   const close = document.createElement('button');
   close.textContent = '✕';
-  close.title = 'Close (Esc)';
+  close.title = '关闭（Esc）';
   close.style.cssText = 'position:fixed; top:16px; right:20px; z-index:1; background:transparent;' +
     'border:none; color:#8b949e; font-size:1.6rem; cursor:pointer; line-height:1;';
   close.addEventListener('click', closeGuide);

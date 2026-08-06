@@ -9,24 +9,26 @@ let currentId = null;        // template open in the editor
 
 // Grouping mirrors the simulator's attacker fleet.
 const GROUP_ORDER = ['combat', 'special', 'recon', 'utility'];
-const GROUP_LABELS = { combat: 'Combat', special: 'Special', recon: 'Recon', utility: 'Utility' };
+const GROUP_LABELS = { combat: '战斗', special: '特殊', recon: '侦察', utility: '辅助' };
 
 // Colour + "what it mines" per mining ship (keyed by ship key), so the template
 // editor shows at a glance which fields each hauler works. Colours match the
 // asteroid field-type palette.
 const MINING_SHIPS = {
-  miner:         { name: 'Mining Vessel', color: '#f0883e', mines: 'Ore, Plasma Core' },
-  gas_collector: { name: 'Gas Collector', color: '#79c0ff', mines: 'Hydrogen, Quantum Dust' },
-  ice_drill:     { name: 'Ice Drill',     color: '#a5d6ff', mines: 'Cryo-Ice, Dark Matter' },
-  excavator:     { name: 'Excavator',     color: '#e3b341', mines: '+20% fleet mining yield (all)' },
-  freighter:     { name: 'Freighter',     color: '#8b949e', mines: 'Ore, Cryo-Ice (basic)' },
+  miner:         { name: '采矿船', color: '#f0883e', mines: '矿石、等离子核心' },
+  gas_collector: { name: '气体收集船', color: '#79c0ff', mines: '氢、量子尘' },
+  ice_drill:     { name: '冰钻船', color: '#a5d6ff', mines: '低温冰、暗物质' },
+  excavator:     { name: '挖掘机', color: '#e3b341', mines: '全部采矿产量 +20%' },
+  freighter:     { name: '货船', color: '#8b949e', mines: '矿石、低温冰（基础）' },
 };
 
 function statText(s) {
-  return `ATK ${s.attack} · HP ${s.hp} · SH ${s.shieldHp}` +
-    (s.weaponType ? ` · ${s.weaponType}` : '') +
-    (s.armorType ? ` · ${s.armorType}` : '') +
-    (s.miningCargo ? ` · cargo ${s.miningCargo}` : '');
+  const weapon = { kinetic: '动能', laser: '激光', plasma: '等离子', missile: '导弹', ion: '离子' }[s.weaponType] || s.weaponType;
+  const armor = { light: '轻型装甲', medium: '中型装甲', heavy: '重型装甲', shielded: '护盾装甲' }[s.armorType] || s.armorType;
+  return `攻击 ${s.attack} · 耐久 ${s.hp} · 护盾 ${s.shieldHp}` +
+    (weapon ? ` · ${weapon}` : '') +
+    (armor ? ` · ${armor}` : '') +
+    (s.miningCargo ? ` · 采矿货舱 ${s.miningCargo}` : '');
 }
 
 // Load templates, migrating the legacy single `mining_template` if present.
@@ -34,18 +36,18 @@ function statText(s) {
 // the storage key or migration.
 export async function loadFleetTemplates() {
   const { fleet_templates, mining_template } =
-    await browser.storage.local.get(['fleet_templates', 'mining_template']);
+    await globalThis.nexusStorage.get(['fleet_templates', 'mining_template']);
   if (fleet_templates && fleet_templates.length) return fleet_templates;
   if (mining_template && Object.keys(mining_template.ships || {}).length) {
-    const seeded = [{ id: Date.now(), name: 'Mining', ships: mining_template.ships }];
-    await browser.storage.local.set({ fleet_templates: seeded });
+    const seeded = [{ id: Date.now(), name: '采矿', ships: mining_template.ships }];
+    await globalThis.nexusStorage.set({ fleet_templates: seeded });
     return seeded;
   }
   return [];
 }
 
 async function save() {
-  await browser.storage.local.set({ fleet_templates: templates });
+  await globalThis.nexusStorage.set({ fleet_templates: templates });
 }
 
 // Mining-ship colour legend (built once).
@@ -70,7 +72,7 @@ export async function renderFleetsTab() {
   renderLegend();
 
   document.getElementById('ft-new').addEventListener('click', () => {
-    const t = { id: Date.now(), name: 'New template', ships: {} };
+    const t = { id: Date.now(), name: '新模板', ships: {} };
     templates.push(t);
     currentId = t.id;
     save();
@@ -93,7 +95,7 @@ export async function renderFleetsTab() {
     const t = current();
     if (!t) return;
     t.name = e.target.value;
-    document.getElementById('ft-box-title').textContent = t.name || 'Fleet';
+    document.getElementById('ft-box-title').textContent = t.name || '舰队';
     save();
     fillSelect();
   });
@@ -103,9 +105,9 @@ export async function renderFleetsTab() {
   fillEditor();
 
   const status = document.getElementById('ft-status');
-  status.textContent = 'Loading ships…';
+  status.textContent = '正在加载舰船…';
   const res = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
-  status.textContent = res.error ? `Error: ${res.error}` : '';
+  status.textContent = res.error ? `错误：${res.error}` : '';
   shipDefs = res.ships || [];
   fillShips();
 }
@@ -131,7 +133,7 @@ function fillEditor() {
   document.getElementById('ft-name').value = t ? t.name : '';
   document.getElementById('ft-name').disabled = !t;
   document.getElementById('ft-delete').disabled = !t;
-  document.getElementById('ft-box-title').textContent = t ? (t.name || 'Fleet') : 'Fleet';
+  document.getElementById('ft-box-title').textContent = t ? (t.name || '舰队') : '舰队';
   fillShips();
 }
 
@@ -141,8 +143,8 @@ function fillShips() {
   const tbody = document.getElementById('ft-ships');
   tbody.textContent = '';
   const t = current();
-  if (!t) { tbody.innerHTML = '<tr><td>Create a template to begin.</td></tr>'; return; }
-  if (!shipDefs.length) { tbody.innerHTML = '<tr><td>No ships found on your planets.</td></tr>'; return; }
+  if (!t) { tbody.innerHTML = '<tr><td>请先创建一个模板。</td></tr>'; return; }
+  if (!shipDefs.length) { tbody.innerHTML = '<tr><td>你的星球上没有找到舰船。</td></tr>'; return; }
 
   const ships = shipDefs.slice().sort((a, b) =>
     GROUP_ORDER.indexOf(a.shipClass) - GROUP_ORDER.indexOf(b.shipClass) || a.sortOrder - b.sortOrder);
@@ -165,7 +167,7 @@ function fillShips() {
     tdName.className = 'ship-name';
     tdName.textContent = s.name;
     const mine = MINING_SHIPS[s.key];
-    if (mine) { tdName.style.color = mine.color; tdName.title = `Mines: ${mine.mines}`; }
+    if (mine) { tdName.style.color = mine.color; tdName.title = `可开采：${mine.mines}`; }
     else if (s.miningCargo) tdName.style.color = '#e3b341';   // any other hauler with mining cargo
 
     const tdStats = document.createElement('td');

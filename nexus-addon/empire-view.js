@@ -19,30 +19,30 @@ window.__nxEmpireView = true;
 const IMG = '/images/resources';
 // resourceKey → { breakdownKey, building def key (level), label, icon }
 const RESOURCES = [
-  { k: 'ore',         bd: 'ore',         bld: 'ore_mine',           label: 'Ore Mine',          icon: 'ore.webp' },
-  { k: 'silicates',   bd: 'silicates',   bld: 'silicate_mine',      label: 'Silicate Mine',     icon: 'silicates.webp' },
-  { k: 'hydrogen',    bd: 'hydrogen',    bld: 'hydrogen_processor', label: 'Hydrogen Processor',icon: 'hydrogen.webp' },
-  { k: 'alloys',      bd: 'alloys',      bld: 'alloy_foundry',      label: 'Alloy Foundry',     icon: 'alloys.webp' },
-  { k: 'cryoIce',     bd: 'cryoIce',     bld: null,                 label: 'Cryo-Ice',          icon: 'cryo_ice.webp' },
-  { k: 'quantumDust', bd: 'quantumDust', bld: null,                 label: 'Quantum Dust',      icon: 'quantum_dust.webp' },
-  { k: 'plasmaCore',  bd: 'plasmaCore',  bld: null,                 label: 'Plasma Core',       icon: 'plasma_core.webp' },
-  { k: 'bioExtract',  bd: 'bioExtract',  bld: null,                 label: 'Bio-Extract',       icon: 'bio_extract.webp' },
-  { k: 'darkMatter',  bd: 'darkMatter',  bld: null,                 label: 'Dark Matter',       icon: 'dark_matter.webp' },
-  { k: 'antimatter',  bd: 'antimatter',  bld: null,                 label: 'Antimatter',        icon: 'antimatter.webp' },
+  { k: 'ore',         bd: 'ore',         bld: 'ore_mine',           label: '矿石',       building: '矿石矿场',   icon: 'ore.webp' },
+  { k: 'silicates',   bd: 'silicates',   bld: 'silicate_mine',      label: '硅酸盐',     building: '硅酸盐矿场', icon: 'silicates.webp' },
+  { k: 'hydrogen',    bd: 'hydrogen',    bld: 'hydrogen_processor', label: '氢',         building: '氢处理厂',   icon: 'hydrogen.webp' },
+  { k: 'alloys',      bd: 'alloys',      bld: 'alloy_foundry',      label: '合金',       building: '合金铸造厂', icon: 'alloys.webp' },
+  { k: 'cryoIce',     bd: 'cryoIce',     bld: null,                 label: '低温冰',     building: '低温冰',     icon: 'cryo_ice.webp' },
+  { k: 'quantumDust', bd: 'quantumDust', bld: null,                 label: '量子尘',     building: '量子尘',     icon: 'quantum_dust.webp' },
+  { k: 'plasmaCore',  bd: 'plasmaCore',  bld: null,                 label: '等离子核心', building: '等离子核心', icon: 'plasma_core.webp' },
+  { k: 'bioExtract',  bd: 'bioExtract',  bld: null,                 label: '生物提取物', building: '生物提取物', icon: 'bio_extract.webp' },
+  { k: 'darkMatter',  bd: 'darkMatter',  bld: null,                 label: '暗物质',     building: '暗物质',     icon: 'dark_matter.webp' },
+  { k: 'antimatter',  bd: 'antimatter',  bld: null,                 label: '反物质',     building: '反物质',     icon: 'antimatter.webp' },
 ];
 
 const fmt = n => Math.round(n || 0).toLocaleString();
 
 function fmtCountdown(ms) {
-  if (ms <= 0) return 'done';
+  if (ms <= 0) return '已完成';
   let s = Math.floor(ms / 1000);
   const d = Math.floor(s / 86400); s %= 86400;
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
   const p = n => String(n).padStart(2, '0');
-  if (d) return `${d}d ${h}h`;
-  if (h) return `${h}h ${p(m)}m`;
-  if (m) return `${m}m ${p(sec)}s`;
-  return `${sec}s`;
+  if (d) return `${d}天 ${h}时`;
+  if (h) return `${h}时 ${p(m)}分`;
+  if (m) return `${m}分 ${p(sec)}秒`;
+  return `${sec}秒`;
 }
 
 // Live countdown registry: each render repopulates it; a 1s interval ticks them
@@ -70,12 +70,12 @@ async function jget(path) {
 function shipQueueItems(shipyard) {
   const pull = (arr, yard) => (arr || []).map(it => ({
     yard,
-    name: it.shipName || it.shipKey || 'Ship',
+    name: it.shipName || it.shipKey || '舰船',
     qty: Math.max(0, (it.quantity || 0) - (it.completed || 0)) || it.quantity || 1,
     repair: it.isRepair || it.operation === 'repair',
     ends: it.endsAt || null,
   }));
-  return [...pull(shipyard.planetaryQueueAll, 'Shipyard'), ...pull(shipyard.orbitalQueueAll, 'Orbital')];
+  return [...pull(shipyard.planetaryQueueAll, '船坞'), ...pull(shipyard.orbitalQueueAll, '轨道船坞')];
 }
 
 // One planet's bundle (detail + research + shipyard) → flat model for the table.
@@ -139,15 +139,15 @@ async function openEmpire() {
         style="width:100%; height:100%; object-fit:cover; object-position:center 40%; display:block; opacity:0.85;">
       <div style="position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; padding:0 24px;
         background:linear-gradient(90deg, rgba(8,10,16,0.85) 0%, rgba(8,10,16,0.35) 60%, rgba(8,10,16,0) 100%);">
-        <h1 style="margin:0; font-size:1.9rem; color:#e6edf3;">Empire View</h1>
-        <p class="res-hero-sub" style="margin:5px 0 0; color:#9aa4b2; font-size:0.9rem;">Loading planets…</p>
+        <h1 style="margin:0; font-size:1.9rem; color:#e6edf3;">帝国总览</h1>
+        <p class="res-hero-sub" style="margin:5px 0 0; color:#9aa4b2; font-size:0.9rem;">正在加载星球…</p>
       </div>
     </section>`;
 
   // Close (Esc + button).
   const close = document.createElement('button');
   close.textContent = '✕';
-  close.title = 'Close (Esc)';
+  close.title = '关闭（Esc）';
   close.style.cssText = 'position:fixed; top:16px; right:20px; z-index:1; background:transparent;' +
     'border:none; color:#8b949e; font-size:1.6rem; cursor:pointer; line-height:1;';
   close.addEventListener('click', closeEmpire);
@@ -168,7 +168,7 @@ async function openEmpire() {
     }));
     planets = bundles.map(modelOf);
   } catch (e) {
-    page.querySelector('.res-hero-sub').textContent = `Error: ${e.message}`;
+    page.querySelector('.res-hero-sub').textContent = `错误：${e.message}`;
     return;
   }
   if (!overlay) return;   // closed while loading
@@ -179,7 +179,7 @@ async function openEmpire() {
 function renderTable(page, planets) {
   timers = [];   // fresh render → rebuild the timer registry
   page.querySelector('.res-hero-sub').textContent =
-    `${planets.length} planet${planets.length === 1 ? '' : 's'}`;
+    `共 ${planets.length} 个星球`;
 
   const table = document.createElement('table');
   table.className = 'nx-empire-table';
@@ -200,7 +200,7 @@ function renderTable(page, planets) {
   const hr = document.createElement('tr');
   hr.appendChild(cell('th', '', thBase + 'text-align:left;'));
   for (const p of planets) hr.appendChild(cell('th', p.name, thBase + 'color:#e6edf3;'));
-  hr.appendChild(cell('th', 'Total', thBase + 'color:#f0883e; font-weight:700;'));
+  hr.appendChild(cell('th', '合计', thBase + 'color:#f0883e; font-weight:700;'));
   thead.appendChild(hr);
   table.appendChild(thead);
 
@@ -256,13 +256,13 @@ function renderTable(page, planets) {
   };
 
   // ── Workforce ──
-  section('Workforce');
-  row('Population',
+  section('劳动力');
+  row('人口',
     p => `${fmt(p.population)} / ${fmt(p.maxPopulation)}`,
     ps => `${fmt(sum(ps, p => p.population))} / ${fmt(sum(ps, p => p.maxPopulation))}`);
-  row('Growth /h', p => `+${fmt(p.growth)}`, ps => `+${fmt(sum(ps, p => p.growth))}`);
-  row('Assigned workers', p => fmt(p.workers), ps => fmt(sum(ps, p => p.workers)));
-  row('Free workers',
+  row('每小时增长', p => `+${fmt(p.growth)}`, ps => `+${fmt(sum(ps, p => p.growth))}`);
+  row('已分配工人', p => fmt(p.workers), ps => fmt(sum(ps, p => p.workers)));
+  row('空闲工人',
     p => fmt(p.population - p.workers),
     ps => fmt(sum(ps, p => p.population - p.workers)));
   const energyCell = net => {
@@ -271,19 +271,19 @@ function renderTable(page, planets) {
     el.style.color = net >= 0 ? '#56d364' : '#ff7b72';
     return el;
   };
-  row('Energy (net)',
+  row('净能源',
     p => { const c = energyCell(p.energyProduced - p.energyConsumed);
-      c.title = `${fmt(p.energyProduced)} produced · ${fmt(p.energyConsumed)} consumed`; return c; },
+      c.title = `产出 ${fmt(p.energyProduced)} · 消耗 ${fmt(p.energyConsumed)}`; return c; },
     ps => energyCell(sum(ps, p => p.energyProduced - p.energyConsumed)));
 
   // ── Available (stored) resources. Skip resources nobody holds. ──
-  section('Available resources');
+  section('可用资源');
   for (const r of RESOURCES) {
     if (!planets.some(p => !p.error && p.stored(r.k) > 0)) continue;
     const label = document.createElement('span');
     label.style.cssText = 'display:inline-flex; align-items:center; gap:7px;';
     label.innerHTML = `<img src="${IMG}/${r.icon}" width="16" height="16" style="width:16px;height:16px;" alt="">` +
-      `<span>${r.label.replace(/ (Mine|Processor|Foundry)$/, '')}</span>`;
+      `<span>${r.label}</span>`;
     row(label,
       p => {
         const cur = p.stored(r.k), cap = p.storageCap(r.k);
@@ -296,14 +296,14 @@ function renderTable(page, planets) {
   }
 
   // ── Resource buildings (level · production/h). Skip resources nobody makes. ──
-  section('Resource buildings — level · /h');
+  section('资源建筑 — 等级 · 每小时产量');
   for (const r of RESOURCES) {
     const anyProd = planets.some(p => !p.error && (p.prod(r.bd) > 0 || p.level(r.bld) > 0));
     if (!anyProd) continue;
     const label = document.createElement('span');
     label.style.cssText = 'display:inline-flex; align-items:center; gap:7px;';
     label.innerHTML = `<img src="${IMG}/${r.icon}" width="16" height="16" style="width:16px;height:16px;" alt="">` +
-      `<span>${r.label}</span>`;
+      `<span>${r.building}</span>`;
     const tr = document.createElement('tr');
     const ltd = cell('td', null, labelCss); ltd.appendChild(label); tr.appendChild(ltd);
     for (const p of planets) {
@@ -312,34 +312,34 @@ function renderTable(page, planets) {
       else {
         const lvl = p.level(r.bld);
         const prod = p.prod(r.bd);
-        const top = lvl != null ? `Lv ${lvl}` : '—';
+        const top = lvl != null ? `${lvl} 级` : '—';
         td.innerHTML = `<div>${top}</div>` +
-          `<div style="color:#8b949e; font-size:0.8rem;">${fmt(prod)}/h</div>`;
+          `<div style="color:#8b949e; font-size:0.8rem;">${fmt(prod)}/时</div>`;
       }
       tr.appendChild(td);
     }
     const tot = cell('td', null, tdBase + 'color:#f0883e; font-weight:600;');
-    tot.innerHTML = `<div>—</div><div style="font-size:0.8rem;">${fmt(sum(planets.filter(p => !p.error), p => p.prod(r.bd)))}/h</div>`;
+    tot.innerHTML = `<div>—</div><div style="font-size:0.8rem;">${fmt(sum(planets.filter(p => !p.error), p => p.prod(r.bd)))}/时</div>`;
     tr.appendChild(tot);
     tbody.appendChild(tr);
   }
 
   // ── Infrastructure: slots, queues, and what's in progress (with live timers). ──
-  section('Infrastructure');
-  row('Building slots',
+  section('基础设施');
+  row('建筑槽位',
     p => `${p.slots.used} / ${p.slots.max}`,
     ps => `${sum(ps, p => p.slots.used)} / ${sum(ps, p => p.slots.max)}`);
-  row('Build queue',
+  row('建造队列',
     p => `${p.buildQueue.count} / ${p.buildQueue.max}`,
     ps => `${sum(ps, p => p.buildQueue.count)} / ${sum(ps, p => p.buildQueue.max)}`);
-  row('Researching',
+  row('研究中',
     p => entriesCell(p.researching, r => entryLine(r.name, r.endsAt)),
     () => '—');
-  row('Buildings in construction',
-    p => entriesCell(p.construction, c => entryLine(`${c.name} Lv${c.level}→${c.level + 1}`, c.ends)),
+  row('建筑施工中',
+    p => entriesCell(p.construction, c => entryLine(`${c.name} ${c.level}→${c.level + 1} 级`, c.ends)),
     () => '—');
-  row('Ships in production',
-    p => entriesCell(p.ships, s => entryLine(`${s.yard}: ${s.qty}× ${s.name}${s.repair ? ' (repair)' : ''}`, s.ends)),
+  row('舰船生产中',
+    p => entriesCell(p.ships, s => entryLine(`${s.yard}：${s.qty}× ${s.name}${s.repair ? '（维修）' : ''}`, s.ends)),
     () => '—');
 
   page.appendChild(table);

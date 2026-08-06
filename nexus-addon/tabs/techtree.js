@@ -1,14 +1,14 @@
 // Tech Tree tab — research from /api/research, laid out as a dependency graph.
 
-import { fmt, store, confirmDialog, escapeHtml } from '../common.js';
+import { fmt, store, confirmDialog, escapeHtml, uiLabel } from '../common.js';
 import { loadAll } from '../dashboard.js';
 
 export const BRANCH_ORDER = ['military', 'science', 'economy'];
 export const BRANCH_COLORS = { military: '#ff7b72', science: '#58a6ff', economy: '#e3b341' };
 export const STATUS_LEGEND = [
-  ['maxed', '#56d364', 'Maxed'], ['researched', '#58a6ff', 'Researched'],
-  ['researching', '#e3b341', 'Researching'], ['available', '#8b949e', 'Available'],
-  ['locked', '#484f58', 'Locked'],
+  ['maxed', '#56d364', '已满级'], ['researched', '#58a6ff', '已研究'],
+  ['researching', '#e3b341', '研究中'], ['available', '#8b949e', '可研究'],
+  ['locked', '#484f58', '未解锁'],
 ];
 export const SVGNS = 'http://www.w3.org/2000/svg';
 export let ttPinned = null;   // pinned tech key (click to lock highlight)
@@ -24,10 +24,10 @@ export let ttResources = null;   // { ore, silicates, …, oreRate, … } or { e
 // ── Research queue planner ──────────────────────────────────────────────────
 export function techByKey(key) { return ttResearch.find(t => t.key === key); }
 
-export function saveTargets() { browser.storage.local.set({ tt_queue_targets: ttTargets }); }
+export function saveTargets() { globalThis.nexusStorage.set({ tt_queue_targets: ttTargets }); }
 
 export async function loadTargets() {
-  const { tt_queue_targets } = await browser.storage.local.get('tt_queue_targets');
+  const { tt_queue_targets } = await globalThis.nexusStorage.get('tt_queue_targets');
   ttTargets = Array.isArray(tt_queue_targets) ? tt_queue_targets : [];
   ttTargetsLoaded = true;
   renderQueue();
@@ -126,7 +126,7 @@ export function populatePlanetSelect() {
     const o = document.createElement('option');
     o.value = String(p.id);
     o.disabled = busy.has(p.id);
-    o.textContent = busy.has(p.id) ? `${p.name} (busy)` : p.name;
+    o.textContent = busy.has(p.id) ? `${p.name}（占用中）` : p.name;
     sel.appendChild(o);
   }
   const free = all.filter(p => !busy.has(p.id));
@@ -150,10 +150,10 @@ export function launchPlanetFor() {
 // resource-spending action (cancel refunds only 90%).
 export async function launchResearch(t, level) {
   const planet = launchPlanetFor();
-  if (!planet) { alert('No free research slot — every planet is already researching.'); return; }
+  if (!planet) { alert('没有空闲的研究槽位，所有星球都在进行研究。'); return; }
   const eta = fmtDuration(baseTimeAt(t, level) * planet.mult);
-  const cost = `${fmt(costAt(t, 'costOre', level))} ore · ${fmt(costAt(t, 'costSilicates', level))} sil · ${fmt(costAt(t, 'costHydrogen', level))} hyd`;
-  if (!await confirmDialog(`Start ${t.name} L${level} on ${planet.name}?\n\nCost: ${cost}\nTime: ${eta}`)) return;
+  const cost = `${fmt(costAt(t, 'costOre', level))} 矿石 · ${fmt(costAt(t, 'costSilicates', level))} 硅酸盐 · ${fmt(costAt(t, 'costHydrogen', level))} 氢`;
+  if (!await confirmDialog(`在 ${planet.name} 开始研究 ${t.name}（${level} 级）？\n\n花费：${cost}\n耗时：${eta}`)) return;
   const res = await browser.runtime.sendMessage({
     type: 'START_RESEARCH', researchId: t.id, planetId: planet.id,
   });
@@ -394,12 +394,12 @@ export function fmtDuration(sec) {
   sec = Math.round(sec);
   const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600);
   const m = Math.floor(sec % 3600 / 60), s = sec % 60;
-  return [d && `${d}d`, h && `${h}h`, m && `${m}m`, (s || (!d && !h && !m)) && `${s}s`]
+  return [d && `${d}天`, h && `${h}时`, m && `${m}分`, (s || (!d && !h && !m)) && `${s}秒`]
     .filter(Boolean).join(' ');
 }
 
 export function fmtClock(ms) {
-  return new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return new Date(ms).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // Time-aware affordability: walk the scheduled steps in start order, accruing
@@ -436,7 +436,7 @@ export function renderQueue() {
   list.textContent = '';
   if (!items.length) {
     list.className = 'tt-queue-empty';
-    list.innerHTML = 'Click <b>+</b> on a tech to plan it.';
+    list.innerHTML = '点击科技上的 <b>+</b> 将其加入规划。';
     totalsEl.textContent = '';
     clearBtn.style.display = 'none';
     const wrap = document.getElementById('tt-launch-planet');
@@ -455,11 +455,11 @@ export function renderQueue() {
     for (const [k, v] of Object.entries(it.rare || {})) rare[k] = (rare[k] || 0) + v;
 
     const row = document.createElement('div');
-    const done = `done ${fmtClock(it.finish)}`;
+    const done = `完成于 ${fmtClock(it.finish)}`;
     if (it.kind === 'lab') {
       row.className = 'tt-queue-item lab';
       row.innerHTML = `<span class="seq">${i + 1}</span>` +
-        `<span class="nm">🔬 Research Lab L${it.level}<br><span class="eta">${done}</span></span>`;
+        `<span class="nm">🔬 研究实验室 ${it.level} 级<br><span class="eta">${done}</span></span>`;
     } else {
       researchTime += it.durMs / 1000;
       const t = techByKey(it.key);
@@ -467,46 +467,46 @@ export function renderQueue() {
       // Only flag a still-unmet lab when no lab upgrade is planned to cover it.
       const labCovered = items.some(x => x.kind === 'lab' && x.level >= (t.requiredLabLevel || 0));
       const labTag = needsLab && !labCovered
-        ? ` <span class="tt-lab" title="needs lab L${t.requiredLabLevel}">🔒L${t.requiredLabLevel}</span>` : '';
+        ? ` <span class="tt-lab" title="需要 ${t.requiredLabLevel} 级研究实验室">🔒${t.requiredLabLevel} 级</span>` : '';
       row.className = 'tt-queue-item' + (it.isTarget ? '' : ' dep');
       row.innerHTML = `<span class="seq">${i + 1}</span>` +
-        `<span class="nm">${escapeHtml(t.name)} L${it.level}${labTag}<br><span class="eta">${done}</span></span>`;
+        `<span class="nm">${escapeHtml(t.name)} ${it.level} 级${labTag}<br><span class="eta">${done}</span></span>`;
       if (isLaunchable(t, it.level)) {
         const go = document.createElement('button');
         go.className = 'go'; go.textContent = '▶';
         const planet = launchPlanetFor();
         go.disabled = !planet;
-        go.title = planet ? `Start on ${planet.name}` : 'No free research slot — every planet is researching';
+        go.title = planet ? `在 ${planet.name} 开始研究` : '没有空闲的研究槽位，所有星球都在进行研究';
         go.addEventListener('click', () => launchResearch(t, it.level));
         row.appendChild(go);
       }
       const rm = document.createElement('button');
-      rm.className = 'rm'; rm.textContent = '✕'; rm.title = 'Remove';
+      rm.className = 'rm'; rm.textContent = '✕'; rm.title = '移除';
       rm.addEventListener('click', () => removeStep(it.key, it.level));
       row.appendChild(rm);
     }
     list.appendChild(row);
   });
 
-  const parts = [`${fmt(cost.ore)} ore`, `${fmt(cost.silicates)} sil`, `${fmt(cost.hydrogen)} hyd`];
-  if (cost.alloys) parts.push(`${fmt(cost.alloys)} alloys`);
-  for (const [k, v] of Object.entries(rare)) if (v) parts.push(`${fmt(v)} ${k.replace(/_/g, ' ')}`);
+  const parts = [`${fmt(cost.ore)} 矿石`, `${fmt(cost.silicates)} 硅酸盐`, `${fmt(cost.hydrogen)} 氢`];
+  if (cost.alloys) parts.push(`${fmt(cost.alloys)} 合金`);
+  for (const [k, v] of Object.entries(rare)) if (v) parts.push(`${fmt(v)} ${uiLabel(k)}`);
 
   const aff = scheduleAffordability(items, now);
   let afford = '';
   if (aff) {
-    afford = aff.ok ? '<div style="color:#56d364">Affordable now</div>'
-      : aff.infeasible ? '<div style="color:#ff7b72">Not affordable (no income for a resource)</div>'
-        : `<div style="color:#e3b341">Affordable in ~${fmtDuration(aff.waitH * 3600)} (at current rates)</div>`;
+    afford = aff.ok ? '<div style="color:#56d364">当前资源充足</div>'
+      : aff.infeasible ? '<div style="color:#ff7b72">资源不足（某项资源没有产出）</div>'
+        : `<div style="color:#e3b341">按当前产量约 ${fmtDuration(aff.waitH * 3600)} 后资源充足</div>`;
   }
 
-  const slotNote = slots > 1 ? ` · ${slots} research slots` : '';
+  const slotNote = slots > 1 ? ` · ${slots} 个研究槽位` : '';
   totalsEl.innerHTML =
-    `<div>Cost: <span class="tot-val">${parts.join(' · ')}</span></div>` +
+    `<div>花费：<span class="tot-val">${parts.join(' · ')}</span></div>` +
     afford +
-    `<div>Research time: <span class="tot-val">${fmtDuration(researchTime)}</span> · ${items.length} steps${slotNote}</div>` +
-    `<div>Queue done: <span class="tot-val">${fmtClock(finishTime)}</span></div>` +
-    (labInfo.level ? `<div style="color:#6e7681">${labInfo.estimated ? 'Est. lab' : 'Lab'} level ${labInfo.level}</div>` : '');
+    `<div>研究耗时：<span class="tot-val">${fmtDuration(researchTime)}</span> · ${items.length} 个步骤${slotNote}</div>` +
+    `<div>队列完成时间：<span class="tot-val">${fmtClock(finishTime)}</span></div>` +
+    (labInfo.level ? `<div style="color:#6e7681">${labInfo.estimated ? '估算实验室' : '实验室'}等级 ${labInfo.level}</div>` : '');
   clearBtn.style.display = '';
 }
 
@@ -560,20 +560,20 @@ export function techStatus(t, levels) {
 export function techTooltip(t, levels) {
   const lines = [t.description || ''];
   if (t.requirements?.length) {
-    lines.push('Requires: ' + t.requirements.map(r => {
+    lines.push('前置条件：' + t.requirements.map(r => {
       const met = r.type !== 'research' || (levels[r.key] || 0) > 0;
-      return `${r.key.replace(/_/g, ' ')}${met ? ' ✓' : ' ✗'}`;
+      return `${techByKey(r.key)?.name || uiLabel(r.key)}${met ? ' ✓' : ' ✗'}`;
     }).join(', '));
   }
-  if (t.requiredLabLevel) lines.push(`Lab level ${t.requiredLabLevel}`);
+  if (t.requiredLabLevel) lines.push(`研究实验室等级 ${t.requiredLabLevel}`);
   if (!t.isMaxed) {
     const cost = [
-      t.nextCostOre && `${fmt(t.nextCostOre)} ore`,
-      t.nextCostSilicates && `${fmt(t.nextCostSilicates)} sil`,
-      t.nextCostHydrogen && `${fmt(t.nextCostHydrogen)} hyd`,
-      t.nextCostAlloys && `${fmt(t.nextCostAlloys)} alloys`,
+      t.nextCostOre && `${fmt(t.nextCostOre)} 矿石`,
+      t.nextCostSilicates && `${fmt(t.nextCostSilicates)} 硅酸盐`,
+      t.nextCostHydrogen && `${fmt(t.nextCostHydrogen)} 氢`,
+      t.nextCostAlloys && `${fmt(t.nextCostAlloys)} 合金`,
     ].filter(Boolean).join(', ');
-    if (cost) lines.push(`Next level: ${cost}`);
+    if (cost) lines.push(`下一级：${cost}`);
   }
   return lines.filter(Boolean).join('\n');
 }
@@ -586,11 +586,11 @@ export function populateBranchOptions(research) {
   const current = sel.value;
   sel.textContent = '';
   const all = document.createElement('option');
-  all.value = 'all'; all.textContent = 'All branches';
+  all.value = 'all'; all.textContent = '全部分支';
   sel.appendChild(all);
   for (const b of branches) {
     const o = document.createElement('option');
-    o.value = b; o.textContent = b[0].toUpperCase() + b.slice(1);
+    o.value = b; o.textContent = uiLabel(b);
     sel.appendChild(o);
   }
   sel.value = branches.includes(current) || current === 'all' ? current : 'all';
@@ -634,7 +634,7 @@ export function renderTechTreeTab() {
   if (!research.length) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
-    p.textContent = 'No research data yet — open the game then click Scrape Now.';
+    p.textContent = '尚无研究数据，请先打开游戏，然后点击“立即采集”。';
     container.appendChild(p);
     document.getElementById('tt-summary').textContent = '';
     return;
@@ -646,8 +646,8 @@ export function renderTechTreeTab() {
   ttResearch = research; ttLevelsRef = levels;
   renderLegend();
   document.getElementById('tt-summary').textContent =
-    `${research.filter(t => (t.level || 0) > 0).length}/${research.length} researched · ` +
-    `${research.filter(t => techStatus(t, levels) === 'maxed').length} maxed`;
+    `${research.filter(t => (t.level || 0) > 0).length}/${research.length} 项已研究 · ` +
+    `${research.filter(t => techStatus(t, levels) === 'maxed').length} 项已满级`;
 
   // Depth from the full graph (stable columns); render the selected branch.
   const depth = computeDepths(research);
@@ -891,7 +891,7 @@ export function renderTechTreeTab() {
     lbl.setAttribute('class', 'tt-tier');
     lbl.setAttribute('x', PAD);
     lbl.setAttribute('y', rowMidY(r));
-    lbl.textContent = `T${r}`;
+    lbl.textContent = `层 ${r}`;
     svg.appendChild(lbl);
   }
 
@@ -935,21 +935,21 @@ export function renderTechTreeTab() {
     name.textContent = t.name;
     const lvl = document.createElement('div');
     lvl.className = 'tt-node-level';
-    lvl.textContent = `${t.branch} · ${t.level || 0}/${t.maxLevel || 1}`;
+    lvl.textContent = `${uiLabel(t.branch)} · ${t.level || 0}/${t.maxLevel || 1}`;
     node.append(name, lvl);
     if (!t.isMaxed) {
       const add = document.createElement('div');
       add.className = 'tt-add' + (planKeys.has(t.key) ? ' queued' : '');
       add.dataset.key = t.key;
       add.textContent = '+';
-      add.title = 'Add one level to the research queue (with prerequisites)';
+      add.title = '将一级科技及其前置条件加入研究队列';
       add.addEventListener('click', (e) => { e.stopPropagation(); addToQueue(t.key); });
       node.appendChild(add);
       if ((t.maxLevel || 1) > 1) {
         const mx = document.createElement('div');
         mx.className = 'tt-max';
         mx.textContent = '⤒';
-        mx.title = `Queue to max level (${t.maxLevel})`;
+        mx.title = `加入队列直至满级（${t.maxLevel}）`;
         mx.addEventListener('click', (e) => { e.stopPropagation(); maxToQueue(t.key); });
         node.appendChild(mx);
       }
@@ -1029,12 +1029,12 @@ export function renderLegend() {
   if (!el) return;
   const swatch = (color, label, kind) =>
     `<span class="tt-leg-item"><span class="tt-leg-${kind}" style="background:${color}"></span>${label}</span>`;
-  const branches = BRANCH_ORDER.map(b => swatch(BRANCH_COLORS[b], b, 'dot')).join('');
+  const branches = BRANCH_ORDER.map(b => swatch(BRANCH_COLORS[b], uiLabel(b), 'dot')).join('');
   const status = STATUS_LEGEND.map(([, c, l]) => swatch(c, l, 'bar')).join('');
   el.innerHTML =
-    `<span class="tt-leg-group">Branch: ${branches}</span>` +
-    `<span class="tt-leg-group">Status: ${status}</span>` +
-    `<span class="tt-leg-group tt-leg-muted">solid edge = prereq met · dashed = unmet · click a tech to pin its chain</span>`;
+    `<span class="tt-leg-group">分支：${branches}</span>` +
+    `<span class="tt-leg-group">状态：${status}</span>` +
+    `<span class="tt-leg-group tt-leg-muted">实线表示前置条件已满足 · 虚线表示未满足 · 点击科技可固定其关系链</span>`;
 }
 
 document.getElementById('tt-queue-clear').addEventListener('click', () => {

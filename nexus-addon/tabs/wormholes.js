@@ -1,7 +1,7 @@
 // Wormhole runs tab. Expeditions have their own tab (tabs/expeditions.js) —
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeRawLossCost, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderPagedTable, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeRawLossCost, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, isUnfiltered, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderPagedTable, store, uiLabel, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartWormholes, chartWhComp;
 
@@ -50,7 +50,7 @@ export function populateClassOptions() {
   const current = sel.value;
   sel.textContent = '';
   const all = document.createElement('option');
-  all.value = 'all'; all.textContent = 'All classes';
+  all.value = 'all'; all.textContent = '全部等级';
   sel.appendChild(all);
   for (const c of classes) {
     const o = document.createElement('option');
@@ -77,19 +77,19 @@ export function renderWormholesTab() {
   if (!t.missions) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
-    p.textContent = 'No wormhole runs recorded yet.';
+    p.textContent = '尚未记录虫洞任务。';
     el.appendChild(p);
   } else {
     el.append(
-      makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
-      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
-      makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
+      makeStatCard(`矿石${periodLabel}`, fmt(t.ore), 'ore'),
+      makeStatCard(`硅酸盐${periodLabel}`, fmt(t.silicates), 'silicates'),
+      makeStatCard(`氢${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
     );
     appendExtraResourceCards(el, t, periodLabel);
     el.append(
-      makeStatCard(`Runs${periodLabel}`, fmt(t.missions), 'missions'),
-      makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
-      makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('expedition', mode)), 'hydrogen'),
+      makeStatCard(`任务数${periodLabel}`, fmt(t.missions), 'missions'),
+      makeStatCard(`损失舰船${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+      makeStatCard(`燃料消耗${periodLabel}`, fmt(fuelForMode('expedition', mode)), 'hydrogen'),
     );
   }
 
@@ -98,7 +98,7 @@ export function renderWormholesTab() {
 
   if (chartWormholes) chartWormholes.destroy();
   chartWormholes = makeResourceLineChart('chart-wormholes', getWhSeriesForMode(mode),
-    getLabelKey(mode), { field: 'missions', label: 'Runs' });
+    getLabelKey(mode), { field: 'missions', label: '任务数' });
 
   if (chartWhComp) chartWhComp.destroy();
   chartWhComp = makeResourceDoughnut('chart-wormholes-comp', t);
@@ -118,9 +118,9 @@ export function renderWhTable() {
     const tdClass = document.createElement('td');
     tdClass.textContent = r.wclass ? r.wclass.toUpperCase() : '—';
     const tdLoc = document.createElement('td');
-    tdLoc.textContent = r.location || '—';
+    tdLoc.textContent = uiLabel(r.location) || '—';
     const tdEvent = document.createElement('td');
-    tdEvent.textContent = r.event ? String(r.event).replace(/_/g, ' ') : '—';
+    tdEvent.textContent = r.event ? uiLabel(r.event) : '—';
     const loot = r.loot || {};
     const tdOre = zeroCell(loot.ore); tdOre.className = 'ore';
     const tdSil = zeroCell(loot.silicates); tdSil.className = 'silicates';

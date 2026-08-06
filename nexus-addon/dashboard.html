@@ -1,103 +1,110 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>Nexus Accounting</title>
+  <title>Nexus Accounting 助手</title>
   <link rel="stylesheet" href="dashboard.css" />
 </head>
 <body>
-  <h1>Nexus Accounting</h1>
+  <h1>Nexus Accounting 助手</h1>
 
   <nav class="tabs">
-    <button class="tab active" data-tab="global">Global</button>
-    <button class="tab" data-tab="surveys">Surveys</button>
-    <button class="tab" data-tab="pirates">Pirates</button>
-    <button class="tab" data-tab="mining">Mining</button>
-    <button class="tab" data-tab="battles">Battles</button>
-    <button class="tab" data-tab="debris">Debris</button>
-    <button class="tab" data-tab="expeditions">Expeditions</button>
-    <button class="tab" data-tab="wormholes">Wormhole</button>
-    <button class="tab" data-tab="finder">Galaxy Scout</button>
-    <button class="tab" data-tab="asteroids">Asteroids Fields</button>
-    <button class="tab" data-tab="fleets">Fleet Templates</button>
-    <button class="tab" data-tab="scouting">Scouting</button>
-    <button class="tab" data-tab="xeno">Xeno</button>
-    <button class="tab" data-tab="market">Market</button>
-    <button class="tab" data-tab="techtree">Tech Tree</button>
+    <button class="tab active" data-tab="global">总览</button>
+    <button class="tab" data-tab="surveys">勘测</button>
+    <button class="tab" data-tab="pirates">海盗</button>
+    <button class="tab" data-tab="mining">采矿</button>
+    <button class="tab" data-tab="battles">战斗</button>
+    <button class="tab" data-tab="debris">残骸</button>
+    <button class="tab" data-tab="expeditions">远征</button>
+    <button class="tab" data-tab="wormholes">虫洞</button>
+    <button class="tab" data-tab="finder">星系侦察</button>
+    <button class="tab" data-tab="asteroids">小行星带</button>
+    <button class="tab" data-tab="fleets">舰队模板</button>
+    <button class="tab" data-tab="scouting">侦察任务</button>
+    <button class="tab" data-tab="xeno">异星遗迹</button>
+    <button class="tab" data-tab="market">市场</button>
+    <button class="tab" data-tab="techtree">科技树</button>
   </nav>
 
   <div class="status-bar">
-    <span id="status-text">Loading…</span>
-    <button id="btn-scrape">Scrape Now</button>
-    <button id="btn-reset" style="color:#ff7b72; border-color:#ff7b7244;">Reset all data</button>
-    <button id="btn-rebuild" title="Recompute all aggregated stats from the stored report records — repairs drift after partial failures.">Rebuild stats</button>
-    <button id="btn-export">Export JSON</button>
-    <button id="btn-import">Import JSON</button>
+    <label class="server-picker" for="server-select">
+      服务器
+      <select id="server-select">
+        <option value="s0">第 0 赛季 · NX-S0</option>
+        <option value="nf">新边疆 · NX-NF</option>
+      </select>
+    </label>
+    <span id="status-text">正在加载…</span>
+    <button id="btn-scrape">立即同步</button>
+    <button id="btn-reset" style="color:#ff7b72; border-color:#ff7b7244;">清空全部数据</button>
+    <button id="btn-rebuild" title="根据已保存的报告重新计算全部汇总统计，用于修复部分操作失败后产生的统计偏差。">重建统计</button>
+    <button id="btn-export">导出 JSON</button>
+    <button id="btn-import">导入 JSON</button>
     <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
-    <a href="simulator.html" style="color:#58a6ff; margin-left:auto;">Combat Simulator →</a>
+    <a href="simulator.html" style="color:#58a6ff; margin-left:auto;">战斗模拟器 →</a>
   </div>
 
   <div class="controls" id="global-controls">
-    <label for="mode-select">View:</label>
+    <label for="mode-select">视图：</label>
     <select id="mode-select">
-      <option value="all">All time</option>
-      <option value="daily">Daily</option>
-      <option value="last3">Last 3 days</option>
-      <option value="last7">Last 7 days</option>
-      <option value="last30">Last month</option>
-      <option value="hourly">Hourly</option>
+      <option value="all">全部时间</option>
+      <option value="daily">按天</option>
+      <option value="last3">最近 3 天</option>
+      <option value="last7">最近 7 天</option>
+      <option value="last30">最近 30 天</option>
+      <option value="hourly">按小时</option>
     </select>
-    <label for="window-from" style="margin-left:12px;">Days:</label>
-    <input type="date" id="window-from" title="Show data from this day (empty = earliest)."
+    <label for="window-from" style="margin-left:12px;">日期：</label>
+    <input type="date" id="window-from" title="显示从该日期开始的数据（留空表示最早日期）。"
       style="background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:3px 6px; border-radius:6px; font-size:0.85rem; color-scheme:dark;" />
     <span style="color:#8b949e;">–</span>
-    <input type="date" id="window-to" title="Show data up to this day (empty = latest)."
+    <input type="date" id="window-to" title="显示截至该日期的数据（留空表示最新日期）。"
       style="background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:3px 6px; border-radius:6px; font-size:0.85rem; color-scheme:dark;" />
-    <label for="zone-select" style="margin-left:12px;">Zone:</label>
-    <select id="zone-select" title="Filter by the security zone where data was gathered. Zone-filtered totals are computed from the stored (capped) records.">
-      <option value="all">All zones</option>
-      <option value="sentinel">Sentinel</option>
-      <option value="open">Open</option>
-      <option value="dead">Dead</option>
-      <option value="rift">Rift</option>
-      <option value="unknown">Unknown</option>
+    <label for="zone-select" style="margin-left:12px;">区域：</label>
+    <select id="zone-select" title="按数据采集时所在的安全区域筛选。分区汇总依据本地保存的有限条数记录计算。">
+      <option value="all">全部区域</option>
+      <option value="sentinel">哨兵区</option>
+      <option value="open">开放区</option>
+      <option value="dead">死亡区</option>
+      <option value="rift">裂隙区</option>
+      <option value="unknown">未知</option>
     </select>
     <span style="margin-left:auto; display:flex; align-items:center; gap:8px; font-size:0.8rem; color:#8b949e;">
-      Records cap
-      <span title="Maximum number of individual survey reports stored locally. Older records are dropped when the limit is reached. Set to 0 for unlimited storage."
+      记录上限
+      <span title="本地最多保存的单条勘测报告数量。达到上限后会丢弃较旧记录；设为 0 表示不限制。"
         style="display:inline-flex; align-items:center; justify-content:center;
                width:14px; height:14px; border-radius:50%; border:1px solid #8b949e;
-               color:#8b949e; font-size:0.65rem; cursor:help; flex-shrink:0;">i</span>
+               color:#8b949e; font-size:0.65rem; cursor:help; flex-shrink:0;">ⓘ</span>
       :
       <input id="records-cap" type="text" value="5000"
         style="width:70px; background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.8rem;" />
-      <span id="cap-warning" style="display:none; color:#ff7b72; font-size:0.75rem;">Must be a whole number ≥ 0</span>
-      <button id="btn-save-cap">Save</button>
+      <span id="cap-warning" style="display:none; color:#ff7b72; font-size:0.75rem;">必须是大于或等于 0 的整数</span>
+      <button id="btn-save-cap">保存</button>
     </span>
   </div>
 
   <div id="global-content">
     <p style="color:#8b949e; font-size:0.85rem; margin-bottom:12px;">
-      Combined across surveys, pirate raids, mining, debris (precise) and expeditions.
+      汇总勘测、海盗突袭、采矿、残骸回收（精确值）和远征数据。
     </p>
-    <div class="section-label">Resources collected (all sources)</div>
+    <div class="section-label">已收集资源（全部来源）</div>
     <div class="stats" id="g-stats-collected"></div>
 
-    <div class="section-label">Net gain (collected − ship costs − fuel)</div>
+    <div class="section-label">净收益（收集资源 − 舰船成本 − 燃料）</div>
     <div class="stats" id="g-stats-net"></div>
 
     <div class="charts">
       <div class="chart-box">
-        <h2>Collected per period</h2>
+        <h2>各时段收集量</h2>
         <canvas id="chart-global-period"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Collected composition</h2>
+        <h2>收集资源构成</h2>
         <canvas id="chart-global"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Share by source (weighted)</h2>
+        <h2>各来源占比（加权）</h2>
         <canvas id="chart-global-source"></canvas>
       </div>
     </div>
@@ -105,69 +112,69 @@
 
   <div id="main-content" style="display:none;">
     <div class="controls" style="margin-top:0;">
-      <label for="event-select">Event:</label>
-      <select id="event-select" title="Filter survey stats and table by anomaly event type.">
-        <option value="all">All events</option>
+      <label for="event-select">事件：</label>
+      <select id="event-select" title="按异常事件类型筛选勘测统计和表格。">
+        <option value="all">全部事件</option>
       </select>
     </div>
 
-    <div class="section-label">Resources collected</div>
+    <div class="section-label">已收集资源</div>
     <div class="stats" id="stats-collected"></div>
 
-    <div class="section-label">Resources lost (destroyed ships)</div>
+    <div class="section-label">损失资源（被摧毁舰船）</div>
     <div class="stats" id="stats-lost"></div>
 
-    <div class="section-label">Repair cost (damaged ships)</div>
+    <div class="section-label">维修成本（受损舰船）</div>
     <div class="stats" id="stats-repair"></div>
 
-    <div class="section-label">Net gain (collected − ship costs − fuel)</div>
+    <div class="section-label">净收益（收集资源 − 舰船成本 − 燃料）</div>
     <div class="stats" id="stats-net"></div>
 
     <div class="charts">
       <div class="chart-box">
-        <h2>Resources per period</h2>
+        <h2>各时段资源</h2>
         <canvas id="chart-resources"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Event type breakdown</h2>
+        <h2>事件类型分布</h2>
         <canvas id="chart-events"></canvas>
       </div>
     </div>
 
     <div class="charts">
       <div class="chart-box" style="grid-column: 1 / -1;">
-        <h2>Resources by event type</h2>
+        <h2>按事件类型统计资源</h2>
         <canvas id="chart-by-event"></canvas>
       </div>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Recent Reports</h2>
+        <h2>最近报告</h2>
         <div class="pagination">
-          <button id="btn-prev">← Prev</button>
-          <span id="page-info">Page 1</span>
-          <button id="btn-next">Next →</button>
+          <button id="btn-prev">← 上一页</button>
+          <span id="page-info">第 1 页</span>
+          <button id="btn-next">下一页 →</button>
         </div>
       </div>
       <table>
         <thead id="reports-head">
           <tr>
-            <th class="sortable" data-key="created_at">Date</th>
-            <th class="sortable" data-key="system_name">System</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="event_type">Event</th>
-            <th class="sortable" data-key="ore">Ore</th>
-            <th class="sortable" data-key="hydrogen">Hydrogen</th>
-            <th class="sortable" data-key="silicates">Silicates</th>
-            <th class="sortable" data-key="alloys">Alloys</th>
-            <th class="sortable" data-key="ice">Ice</th>
-            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
-            <th class="sortable" data-key="plasma_core">Plasma Core</th>
-            <th class="sortable" data-key="dark_matter">Dark Matter</th>
-            <th class="sortable" data-key="antimatter">Antimatter</th>
-            <th class="sortable" data-key="ships_lost">Ships lost</th>
-            <th class="sortable" data-key="ships_damaged">Ships damaged</th>
+            <th class="sortable" data-key="created_at">日期</th>
+            <th class="sortable" data-key="system_name">星系</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="event_type">事件</th>
+            <th class="sortable" data-key="ore">矿石</th>
+            <th class="sortable" data-key="hydrogen">氢</th>
+            <th class="sortable" data-key="silicates">硅酸盐</th>
+            <th class="sortable" data-key="alloys">合金</th>
+            <th class="sortable" data-key="ice">冰</th>
+            <th class="sortable" data-key="quantum_dust">量子尘</th>
+            <th class="sortable" data-key="plasma_core">等离子核心</th>
+            <th class="sortable" data-key="dark_matter">暗物质</th>
+            <th class="sortable" data-key="antimatter">反物质</th>
+            <th class="sortable" data-key="ships_lost">损失舰船</th>
+            <th class="sortable" data-key="ships_damaged">受损舰船</th>
           </tr>
         </thead>
         <tbody id="reports-tbody"></tbody>
@@ -176,60 +183,60 @@
   </div>
 
   <div id="pirates-content" style="display:none;">
-    <div class="section-label">Loot collected</div>
+    <div class="section-label">已收集战利品</div>
     <div class="stats" id="p-stats-collected"></div>
 
-    <div class="section-label">Resources lost (destroyed ships)</div>
+    <div class="section-label">损失资源（被摧毁舰船）</div>
     <div class="stats" id="p-stats-lost"></div>
 
-    <div class="section-label">Repair cost (damaged ships)</div>
+    <div class="section-label">维修成本（受损舰船）</div>
     <div class="stats" id="p-stats-repair"></div>
 
-    <div class="section-label">Net gain (loot − ship costs − fuel)</div>
+    <div class="section-label">净收益（战利品 − 舰船成本 − 燃料）</div>
     <div class="stats" id="p-stats-net"></div>
 
-    <div class="section-label">Debris fields generated</div>
+    <div class="section-label">产生的残骸区</div>
     <div class="stats" id="p-stats-debris"></div>
 
     <div class="charts">
       <div class="chart-box">
-        <h2>Loot per period</h2>
+        <h2>各时段战利品</h2>
         <canvas id="chart-pirate-loot"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Outcome breakdown</h2>
+        <h2>结果分布</h2>
         <canvas id="chart-pirate-outcomes"></canvas>
       </div>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Recent Raids</h2>
+        <h2>最近突袭</h2>
         <div class="pagination">
-          <button id="p-btn-prev">← Prev</button>
-          <span id="p-page-info">Page 1</span>
-          <button id="p-btn-next">Next →</button>
+          <button id="p-btn-prev">← 上一页</button>
+          <span id="p-page-info">第 1 页</span>
+          <button id="p-btn-next">下一页 →</button>
         </div>
       </div>
       <table>
         <thead id="p-reports-head">
           <tr>
-            <th class="sortable" data-key="created_at">Date</th>
-            <th class="sortable" data-key="camp_id">Camp</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="outcome">Outcome</th>
-            <th class="sortable" data-key="ore">Ore</th>
-            <th class="sortable" data-key="hydrogen">Hydrogen</th>
-            <th class="sortable" data-key="silicates">Silicates</th>
-            <th class="sortable" data-key="alloys">Alloys</th>
-            <th class="sortable" data-key="ice">Ice</th>
-            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
-            <th class="sortable" data-key="plasma_core">Plasma Core</th>
-            <th class="sortable" data-key="dark_matter">Dark Matter</th>
-            <th class="sortable" data-key="antimatter">Antimatter</th>
-            <th class="sortable" data-key="ships_lost">Ships destroyed</th>
-            <th class="sortable" data-key="ships_damaged">Ships damaged</th>
-            <th class="sortable" data-key="pirates_destroyed">Pirates destroyed</th>
+            <th class="sortable" data-key="created_at">日期</th>
+            <th class="sortable" data-key="camp_id">营地</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="outcome">结果</th>
+            <th class="sortable" data-key="ore">矿石</th>
+            <th class="sortable" data-key="hydrogen">氢</th>
+            <th class="sortable" data-key="silicates">硅酸盐</th>
+            <th class="sortable" data-key="alloys">合金</th>
+            <th class="sortable" data-key="ice">冰</th>
+            <th class="sortable" data-key="quantum_dust">量子尘</th>
+            <th class="sortable" data-key="plasma_core">等离子核心</th>
+            <th class="sortable" data-key="dark_matter">暗物质</th>
+            <th class="sortable" data-key="antimatter">反物质</th>
+            <th class="sortable" data-key="ships_lost">摧毁的舰船</th>
+            <th class="sortable" data-key="ships_damaged">受损舰船</th>
+            <th class="sortable" data-key="pirates_destroyed">摧毁的海盗舰船</th>
           </tr>
         </thead>
         <tbody id="p-reports-tbody"></tbody>
@@ -238,60 +245,60 @@
   </div>
 
   <div id="mining-content" style="display:none;">
-    <div class="section-label">Resources delivered</div>
+    <div class="section-label">已运回资源</div>
     <div class="stats" id="m-stats-delivered"></div>
 
-    <div class="section-label">Operations</div>
+    <div class="section-label">作业统计</div>
     <div class="stats" id="m-stats-ops"></div>
 
-    <div class="section-label">Resources lost (destroyed ships, all time)</div>
+    <div class="section-label">损失资源（被摧毁舰船，全部时间）</div>
     <div class="stats" id="m-stats-lost"></div>
 
-    <div class="section-label">Repair cost (damaged ships, all time)</div>
+    <div class="section-label">维修成本（受损舰船，全部时间）</div>
     <div class="stats" id="m-stats-repair"></div>
 
-    <div class="section-label" id="m-net-label">Net gain (delivered − ship costs − fuel, all time)</div>
+    <div class="section-label" id="m-net-label">净收益（运回资源 − 舰船成本 − 燃料，全部时间）</div>
     <div class="stats" id="m-stats-net"></div>
 
     <div class="charts">
       <div class="chart-box">
-        <h2>Loot composition</h2>
+        <h2>战利品构成</h2>
         <canvas id="chart-mining-loot"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Deliveries per period</h2>
+        <h2>各时段运回量</h2>
         <canvas id="chart-mining"></canvas>
       </div>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Recent Deliveries</h2>
+        <h2>最近运回记录</h2>
         <div class="pagination">
-          <button id="m-btn-prev">← Prev</button>
-          <span id="m-page-info">Page 1</span>
-          <button id="m-btn-next">Next →</button>
+          <button id="m-btn-prev">← 上一页</button>
+          <span id="m-page-info">第 1 页</span>
+          <button id="m-btn-next">下一页 →</button>
         </div>
       </div>
       <table>
         <thead id="m-reports-head">
           <tr>
-            <th class="sortable" data-key="created_at">Date</th>
-            <th class="sortable" data-key="location">Location</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="ore">Ore</th>
-            <th class="sortable" data-key="silicates">Silicates</th>
-            <th class="sortable" data-key="hydrogen">Hydrogen</th>
-            <th class="sortable" data-key="alloys">Alloys</th>
-            <th class="sortable" data-key="cryo_ice">Cryo-Ice</th>
-            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
-            <th class="sortable" data-key="plasma_core">Plasma Core</th>
-            <th class="sortable" data-key="dark_matter">Dark Matter</th>
-            <th class="sortable" data-key="antimatter">Antimatter</th>
-            <th class="sortable" data-key="cycles">Cycles</th>
-            <th class="sortable" data-key="drill_breakdowns">Breakdowns</th>
-            <th title="Estimated hydrogen fuel for this fleet/trip (POST fuel-estimate)">Fuel cost</th>
-            <th title="Weighted value: mined − breakdown − fuel − ship loss − stolen (ore×1, sil×2, hyd×3, alloys×5, exotics×10)">ROI</th>
+            <th class="sortable" data-key="created_at">日期</th>
+            <th class="sortable" data-key="location">位置</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="ore">矿石</th>
+            <th class="sortable" data-key="silicates">硅酸盐</th>
+            <th class="sortable" data-key="hydrogen">氢</th>
+            <th class="sortable" data-key="alloys">合金</th>
+            <th class="sortable" data-key="cryo_ice">低温冰</th>
+            <th class="sortable" data-key="quantum_dust">量子尘</th>
+            <th class="sortable" data-key="plasma_core">等离子核心</th>
+            <th class="sortable" data-key="dark_matter">暗物质</th>
+            <th class="sortable" data-key="antimatter">反物质</th>
+            <th class="sortable" data-key="cycles">周期</th>
+            <th class="sortable" data-key="drill_breakdowns">故障</th>
+            <th title="该舰队本次航程的预计氢燃料消耗（燃料估算接口）">燃料成本</th>
+            <th title="加权价值：开采 − 故障 − 燃料 − 舰船损失 − 被盗资源（矿石×1、硅酸盐×2、氢×3、合金×5、稀有资源×10）">投资回报</th>
           </tr>
         </thead>
         <tbody id="m-reports-tbody"></tbody>
@@ -302,33 +309,33 @@
   <div id="battles-content" style="display:none;"></div>
 
   <div id="debris-content" style="display:none;">
-    <div class="section-label">Collected by your fleets (precise — from returning collect-debris missions)</div>
+    <div class="section-label">舰队已回收资源（精确值，来自返航的残骸回收任务）</div>
     <div class="stats" id="d-stats-mine"></div>
 
-    <div class="section-label">Debris generated by your pirate raids</div>
+    <div class="section-label">海盗突袭产生的残骸</div>
     <div class="stats" id="d-stats-generated"></div>
 
-    <div class="section-label">Ships lost to ambushes (build cost)</div>
+    <div class="section-label">遭伏击损失的舰船（建造成本）</div>
     <div class="stats" id="d-stats-lost"></div>
 
     <div class="charts">
       <div class="chart-box">
-        <h2>Collected per period</h2>
+        <h2>各时段回收量</h2>
         <canvas id="chart-debris-period"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Collected composition</h2>
+        <h2>回收资源构成</h2>
         <canvas id="chart-debris"></canvas>
       </div>
     </div>
 
     <div class="reports-section">
-      <div class="reports-header"><h2>Active debris runs</h2></div>
+      <div class="reports-header"><h2>进行中的残骸回收</h2></div>
       <table>
         <thead>
           <tr>
-            <th>Fleet</th><th>Target</th><th>Zone</th><th>Status</th>
-            <th>Cargo</th><th>ETA</th>
+            <th>舰队</th><th>目标</th><th>区域</th><th>状态</th>
+            <th>货舱</th><th>预计到达</th>
           </tr>
         </thead>
         <tbody id="d-active-tbody"></tbody>
@@ -336,22 +343,22 @@
     </div>
 
     <div class="reports-section">
-      <div class="reports-header"><h2>Recent debris collections</h2></div>
+      <div class="reports-header"><h2>最近残骸回收</h2></div>
       <table>
         <thead id="d-collected-head">
           <tr>
-            <th class="sortable" data-key="collected_at">Recorded</th>
-            <th class="sortable" data-key="system">System</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="ore">Ore</th>
-            <th class="sortable" data-key="silicates">Silicates</th>
-            <th class="sortable" data-key="alloys">Alloys</th>
-            <th class="sortable" data-key="hydrogen">Hydrogen</th>
-            <th class="sortable" data-key="ice">Ice</th>
-            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
-            <th class="sortable" data-key="plasma_core">Plasma Core</th>
-            <th class="sortable" data-key="dark_matter">Dark Matter</th>
-            <th class="sortable" data-key="antimatter">Antimatter</th>
+            <th class="sortable" data-key="collected_at">记录时间</th>
+            <th class="sortable" data-key="system">星系</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="ore">矿石</th>
+            <th class="sortable" data-key="silicates">硅酸盐</th>
+            <th class="sortable" data-key="alloys">合金</th>
+            <th class="sortable" data-key="hydrogen">氢</th>
+            <th class="sortable" data-key="ice">冰</th>
+            <th class="sortable" data-key="quantum_dust">量子尘</th>
+            <th class="sortable" data-key="plasma_core">等离子核心</th>
+            <th class="sortable" data-key="dark_matter">暗物质</th>
+            <th class="sortable" data-key="antimatter">反物质</th>
           </tr>
         </thead>
         <tbody id="d-collected-tbody"></tbody>
@@ -362,88 +369,88 @@
 
   <div id="expeditions-content" style="display:none;">
     <div class="finder-controls">
-      <label>Launch From
+      <label>出发星球
         <select id="e-launch-planet"></select>
       </label>
-      <label>Preset
+      <label>预设
         <select id="e-launch-preset">
-          <option value="custom">Custom (fleet template)</option>
-          <option value="balanced">Balanced (Rift)</option>
-          <option value="loot_run">Loot Run (Dead)</option>
-          <option value="combat_rift">Combat Rift (Rift)</option>
-          <option value="deep_dead_dive">Deep Dead Dive (Dead)</option>
-          <option value="lean_dead_run">Lean Dead Run (Dead)</option>
+          <option value="custom">自定义（舰队模板）</option>
+          <option value="balanced">均衡配置（裂隙区）</option>
+          <option value="loot_run">战利品收集（死亡区）</option>
+          <option value="combat_rift">裂隙战斗（裂隙区）</option>
+          <option value="deep_dead_dive">死亡区深潜（死亡区）</option>
+          <option value="lean_dead_run">精简死亡区配置（死亡区）</option>
         </select>
       </label>
-      <label id="e-launch-template-row">Fleet template
+      <label id="e-launch-template-row">舰队模板
         <select id="e-launch-template"></select>
       </label>
-      <label>Zone
+      <label>区域
         <select id="e-launch-zone">
-          <option value="dead">Dead</option>
-          <option value="rift">Rift</option>
+          <option value="dead">死亡区</option>
+          <option value="rift">裂隙区</option>
         </select>
       </label>
-      <label>Depth
+      <label>深度
         <input id="e-launch-depth" type="number" min="1" max="5" value="1" style="width:56px;">
       </label>
-      <button id="e-launch-btn">Launch Expedition</button>
+      <button id="e-launch-btn">发起远征</button>
       <span id="e-launch-status" style="color:#8b949e; font-size:0.8rem;"></span>
-      <span id="e-launch-active" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Max 2 expeditions in flight at once"></span>
+      <span id="e-launch-active" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="最多可同时派出 2 支远征舰队"></span>
     </div>
     <div id="e-launch-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Expedition fleets in transit</h2>
+        <h2>航行中的远征舰队</h2>
         <span id="e-transit-count" style="color:#8b949e; font-size:0.8rem;"></span>
       </div>
       <div id="e-transit-list" style="display:flex; flex-direction:column; gap:10px;"></div>
     </div>
 
-    <div class="section-label">Loot collected — expeditions</div>
+    <div class="section-label">远征收集的战利品</div>
     <div class="stats" id="e-stats-collected"></div>
 
-    <div class="section-label">Ships lost to encounters (build cost)</div>
+    <div class="section-label">遭遇战损失的舰船（建造成本）</div>
     <div class="stats" id="e-stats-lost"></div>
 
     <div class="charts">
       <div class="chart-box">
-        <h2>Loot per period</h2>
+        <h2>各时段战利品</h2>
         <canvas id="chart-expeditions"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Loot composition</h2>
+        <h2>战利品构成</h2>
         <canvas id="chart-expeditions-comp"></canvas>
       </div>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Recent Missions</h2>
+        <h2>最近任务</h2>
         <div class="pagination">
-          <button id="e-btn-prev">← Prev</button>
-          <span id="e-page-info">Page 1</span>
-          <button id="e-btn-next">Next →</button>
+          <button id="e-btn-prev">← 上一页</button>
+          <span id="e-page-info">第 1 页</span>
+          <button id="e-btn-next">下一页 →</button>
         </div>
       </div>
       <table>
         <thead id="e-reports-head">
           <tr>
-            <th class="sortable" data-key="created_at">Date</th>
-            <th class="sortable" data-key="location">Location</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="event">Event</th>
-            <th class="sortable" data-key="ore">Ore</th>
-            <th class="sortable" data-key="silicates">Silicates</th>
-            <th class="sortable" data-key="hydrogen">Hydrogen</th>
-            <th class="sortable" data-key="alloys">Alloys</th>
-            <th class="sortable" data-key="ice">Ice</th>
-            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
-            <th class="sortable" data-key="plasma_core">Plasma Core</th>
-            <th class="sortable" data-key="dark_matter">Dark Matter</th>
-            <th class="sortable" data-key="antimatter">Antimatter</th>
-            <th class="sortable" data-key="ships_lost">Ships lost</th>
+            <th class="sortable" data-key="created_at">日期</th>
+            <th class="sortable" data-key="location">位置</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="event">事件</th>
+            <th class="sortable" data-key="ore">矿石</th>
+            <th class="sortable" data-key="silicates">硅酸盐</th>
+            <th class="sortable" data-key="hydrogen">氢</th>
+            <th class="sortable" data-key="alloys">合金</th>
+            <th class="sortable" data-key="ice">冰</th>
+            <th class="sortable" data-key="quantum_dust">量子尘</th>
+            <th class="sortable" data-key="plasma_core">等离子核心</th>
+            <th class="sortable" data-key="dark_matter">暗物质</th>
+            <th class="sortable" data-key="antimatter">反物质</th>
+            <th class="sortable" data-key="ships_lost">损失舰船</th>
           </tr>
         </thead>
         <tbody id="e-reports-tbody"></tbody>
@@ -453,56 +460,56 @@
 
   <div id="wormholes-content" style="display:none;">
     <div class="controls" style="margin-top:0;">
-      <label for="wclass-select">Wormhole class:</label>
-      <select id="wclass-select" title="Filter wormhole runs by wormhole class.">
-        <option value="all">All classes</option>
+      <label for="wclass-select">虫洞等级：</label>
+      <select id="wclass-select" title="按虫洞等级筛选虫洞任务。">
+        <option value="all">全部等级</option>
       </select>
     </div>
 
-    <div class="section-label">Loot collected — wormhole runs</div>
+    <div class="section-label">虫洞任务收集的战利品</div>
     <div class="stats" id="w-stats-collected"></div>
 
-    <div class="section-label">Ships lost to encounters (build cost)</div>
+    <div class="section-label">遭遇战损失的舰船（建造成本）</div>
     <div class="stats" id="w-stats-lost"></div>
 
     <div class="charts">
       <div class="chart-box">
-        <h2>Loot per period</h2>
+        <h2>各时段战利品</h2>
         <canvas id="chart-wormholes"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Loot composition</h2>
+        <h2>战利品构成</h2>
         <canvas id="chart-wormholes-comp"></canvas>
       </div>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Recent Runs</h2>
+        <h2>最近任务</h2>
         <div class="pagination">
-          <button id="w-btn-prev">← Prev</button>
-          <span id="w-page-info">Page 1</span>
-          <button id="w-btn-next">Next →</button>
+          <button id="w-btn-prev">← 上一页</button>
+          <span id="w-page-info">第 1 页</span>
+          <button id="w-btn-next">下一页 →</button>
         </div>
       </div>
       <table>
         <thead id="w-reports-head">
           <tr>
-            <th class="sortable" data-key="created_at">Date</th>
-            <th class="sortable" data-key="wclass">Class</th>
-            <th class="sortable" data-key="location">Location</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="event">Event</th>
-            <th class="sortable" data-key="ore">Ore</th>
-            <th class="sortable" data-key="silicates">Silicates</th>
-            <th class="sortable" data-key="hydrogen">Hydrogen</th>
-            <th class="sortable" data-key="alloys">Alloys</th>
-            <th class="sortable" data-key="ice">Ice</th>
-            <th class="sortable" data-key="quantum_dust">Quantum Dust</th>
-            <th class="sortable" data-key="plasma_core">Plasma Core</th>
-            <th class="sortable" data-key="dark_matter">Dark Matter</th>
-            <th class="sortable" data-key="antimatter">Antimatter</th>
-            <th class="sortable" data-key="ships_lost">Ships lost</th>
+            <th class="sortable" data-key="created_at">日期</th>
+            <th class="sortable" data-key="wclass">等级</th>
+            <th class="sortable" data-key="location">位置</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="event">事件</th>
+            <th class="sortable" data-key="ore">矿石</th>
+            <th class="sortable" data-key="silicates">硅酸盐</th>
+            <th class="sortable" data-key="hydrogen">氢</th>
+            <th class="sortable" data-key="alloys">合金</th>
+            <th class="sortable" data-key="ice">冰</th>
+            <th class="sortable" data-key="quantum_dust">量子尘</th>
+            <th class="sortable" data-key="plasma_core">等离子核心</th>
+            <th class="sortable" data-key="dark_matter">暗物质</th>
+            <th class="sortable" data-key="antimatter">反物质</th>
+            <th class="sortable" data-key="ships_lost">损失舰船</th>
           </tr>
         </thead>
         <tbody id="w-reports-tbody"></tbody>
@@ -512,89 +519,89 @@
 
   <div id="finder-content" style="display:none;">
     <div class="finder-controls">
-      <label>Origin
+      <label>起点
         <select id="f-origin"></select>
       </label>
-      <label>Arm
+      <label>旋臂
         <select id="f-arm"></select>
       </label>
-      <label>Sector
-        <input id="f-sector" type="text" placeholder="35 or 33-35" style="width:90px;
+      <label>扇区
+        <input id="f-sector" type="text" placeholder="35 或 33-35" style="width:90px;
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
-      <label>Type
+      <label>类型
         <select id="f-type">
-          <option value="">any</option>
-          <option value="ancient">ancient</option>
-          <option value="crystalline">crystalline</option>
-          <option value="gas_giant">gas giant</option>
-          <option value="ice">icy</option>
-          <option value="metallic">metallic</option>
-          <option value="rocky">rocky</option>
-          <option value="terra">terra</option>
-          <option value="volcanic">volcanic</option>
+          <option value="">任意</option>
+          <option value="ancient">远古型</option>
+          <option value="crystalline">晶体型</option>
+          <option value="gas_giant">气态巨行星</option>
+          <option value="ice">冰冻型</option>
+          <option value="metallic">金属型</option>
+          <option value="rocky">岩石型</option>
+          <option value="terra">类地型</option>
+          <option value="volcanic">火山型</option>
         </select>
       </label>
-      <label>Min size
+      <label>最小尺寸
         <input id="f-min-size" type="number" min="0" value="0" />
       </label>
-      <label>Max size
+      <label>最大尺寸
         <input id="f-max-size" type="number" min="0" placeholder="∞" />
       </label>
-      <label>Min moons
+      <label>最少卫星数
         <input id="f-min-moons" type="number" min="0" value="0" />
       </label>
-      <label>Temp ≥
+      <label>温度 ≥
         <input id="f-temp-min" type="number" placeholder="−∞" />
       </label>
-      <label>Temp ≤
+      <label>温度 ≤
         <input id="f-temp-max" type="number" placeholder="∞" />
       </label>
-      <label>Zone
+      <label>区域
         <select id="f-zone">
-          <option value="">any</option>
+          <option value="">任意</option>
         </select>
       </label>
-      <label>Ownership
+      <label>所有权
         <select id="f-ownership">
-          <option value="">any</option>
-          <option value="unowned" selected>unowned only</option>
-          <option value="owned">owned only</option>
+          <option value="">任意</option>
+          <option value="unowned" selected>仅无主</option>
+          <option value="owned">仅有主</option>
         </select>
       </label>
       <label style="flex-direction:row; gap:5px;">
-        <input id="f-exclude-mine" type="checkbox" />Exclude mine
+        <input id="f-exclude-mine" type="checkbox" />排除我的星球
       </label>
-      <button id="f-search">Search</button>
-      <button id="f-export" title="Save your scanned planet data to a file to share" style="display:none;">Export galaxy</button>
-      <button id="f-import" title="Merge scanned planet data from a shared file" style="display:none;">Import galaxy</button>
+      <button id="f-search">搜索</button>
+      <button id="f-export" title="将已扫描的星球数据保存为可分享文件" style="display:none;">导出星系数据</button>
+      <button id="f-import" title="合并分享文件中的星球扫描数据" style="display:none;">导入星系数据</button>
       <input id="f-import-file" type="file" accept="application/json,.json" style="display:none" />
       <span id="f-progress" style="color:#8b949e; font-size:0.8rem;"></span>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Matches</h2>
+        <h2>匹配结果</h2>
         <span id="f-match-count" style="color:#8b949e; font-size:0.8rem;"></span>
       </div>
       <table>
         <thead id="f-results-head">
           <tr>
-            <th class="sortable" data-key="planet">Planet</th>
-            <th class="sortable" data-key="system">System</th>
-            <th class="sortable" data-key="sector">Sector</th>
-            <th class="sortable" data-key="type">Type</th>
-            <th class="sortable" data-key="size">Size</th>
-            <th class="sortable" data-key="temp">Temp</th>
-            <th class="sortable" data-key="moons">Moons</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="distance">Distance</th>
-            <th class="sortable" data-key="owner">Owner</th>
-            <th class="sortable" data-key="alliance">Alliance</th>
-            <th class="sortable" data-key="rankMil">Mil rank</th>
-            <th class="sortable" data-key="rankEco">Eco rank</th>
-            <th class="sortable" data-key="rankRes">Res rank</th>
+            <th class="sortable" data-key="planet">星球</th>
+            <th class="sortable" data-key="system">星系</th>
+            <th class="sortable" data-key="sector">扇区</th>
+            <th class="sortable" data-key="type">类型</th>
+            <th class="sortable" data-key="size">尺寸</th>
+            <th class="sortable" data-key="temp">温度</th>
+            <th class="sortable" data-key="moons">卫星</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="distance">距离</th>
+            <th class="sortable" data-key="owner">所有者</th>
+            <th class="sortable" data-key="alliance">联盟</th>
+            <th class="sortable" data-key="rankMil">军事排名</th>
+            <th class="sortable" data-key="rankEco">经济排名</th>
+            <th class="sortable" data-key="rankRes">科研排名</th>
           </tr>
         </thead>
         <tbody id="f-results-tbody"></tbody>
@@ -610,97 +617,97 @@
 
   <div id="asteroids-content" style="display:none;">
     <div class="finder-controls">
-      <label>Mining From :
+      <label>采矿出发点：
         <select id="af-planet"></select>
       </label>
-      <label>Mult ≥
+      <label>倍率 ≥
         <input id="af-mult-min" type="number" step="0.01" min="0" placeholder="0" />
       </label>
-      <label>Qty ≥
+      <label>数量 ≥
         <input id="af-qty-min" type="number" min="0" placeholder="0" />
       </label>
-      <label>Left % ≥
+      <label>剩余比例 ≥
         <input id="af-left-min" type="number" min="0" max="100" placeholder="0" />
       </label>
-      <label>Nearest systems
+      <label>最近星系数
         <input id="af-near" type="number" min="1" max="500" value="25" style="width:70px;
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
-      <label>Type
+      <label>类型
         <span id="af-type" class="res-icons" style="grid-template-columns: repeat(6, auto);"></span>
       </label>
-      <label>Zone
+      <label>区域
         <span id="af-zone" style="display:flex; gap:4px;"></span>
       </label>
-      <button id="af-scan">Scan</button>
+      <button id="af-scan">扫描</button>
       <span id="af-progress" style="color:#8b949e; font-size:0.8rem;"></span>
-      <span id="af-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Fleet slots in use"></span>
+      <span id="af-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="已占用舰队槽位"></span>
     </div>
 
     <div class="finder-controls" id="af-livesearch" style="margin-top:0; border-top:1px solid #30363d; padding-top:10px;">
-      <label title="Background scan every 5 min; notifies on a new match even when this tab or the browser isn't focused.">Live Search :
+      <label title="每 5 分钟在后台扫描一次；即使该标签页或浏览器未获得焦点，发现新匹配项时也会通知。">实时搜索：
         <select id="ls-planet"></select>
       </label>
-      <label>Mult ≥
+      <label>倍率 ≥
         <input id="ls-mult-min" type="number" step="0.01" min="0" placeholder="0" />
       </label>
-      <label>Qty ≥
+      <label>数量 ≥
         <input id="ls-qty-min" type="number" min="0" placeholder="0" />
       </label>
-      <label>Left % ≥
+      <label>剩余比例 ≥
         <input id="ls-left-min" type="number" min="0" max="100" placeholder="0" />
       </label>
-      <label>Nearest systems
+      <label>最近星系数
         <input id="ls-near" type="number" min="1" max="500" value="25" style="width:70px;
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
-      <label>Type
+      <label>类型
         <span id="ls-type" class="res-icons" style="grid-template-columns: repeat(6, auto);"></span>
       </label>
-      <label>Zone
+      <label>区域
         <span id="ls-zone" style="display:flex; gap:4px;"></span>
       </label>
-      <button id="ls-search">Live Search</button>
+      <button id="ls-search">实时搜索</button>
       <span id="ls-status" style="color:#8b949e; font-size:0.8rem;"></span>
     </div>
 
     <div class="finder-controls" id="af-template" style="margin-top:0;">
-      <label>Fleet template
+      <label>舰队模板
         <select id="af-template-select"></select>
       </label>
-      <label style="flex-direction:row; gap:5px;" title="Include an Excavator: +20% fleet extraction capacity in the ship recommendation">
-        <input id="af-excavator" type="checkbox" />Excavator +20%
+      <label style="flex-direction:row; gap:5px;" title="在舰船推荐中加入一艘挖掘机，使舰队开采能力提高 20%">
+        <input id="af-excavator" type="checkbox" />挖掘机 +20%
       </label>
-      <span style="color:#8b949e; font-size:0.8rem;">🚀 on a row opens the fleet editor seeded from the ship recommendation. Edit templates in the Fleets tab.</span>
+      <span style="color:#8b949e; font-size:0.8rem;">点击行内的 🚀 可按推荐舰船打开舰队编辑器；请在“舰队模板”标签页编辑模板。</span>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Asteroid fields</h2>
+        <h2>小行星带</h2>
         <span id="af-count" style="color:#8b949e; font-size:0.8rem;"></span>
         <div class="pagination">
-          <button id="af-btn-prev">← Prev</button>
-          <span id="af-page-info">Page 1</span>
-          <button id="af-btn-next">Next →</button>
+          <button id="af-btn-prev">← 上一页</button>
+          <span id="af-page-info">第 1 页</span>
+          <button id="af-btn-next">下一页 →</button>
         </div>
       </div>
       <div id="af-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
       <table>
         <thead id="af-results-head">
           <tr>
-            <th title="Send mining fleet"></th>
-            <th class="sortable" data-key="system">System</th>
-            <th class="sortable" data-key="type">Type</th>
-            <th class="sortable" data-key="mult" title="Richness multiplier">Mult.</th>
-            <th class="sortable" data-key="remaining" title="Remaining / total resources">Content</th>
-            <th class="sortable" data-key="leftPct" title="Percentage of resources still present">Left %</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="ownerName" title="Owner of the Outpost built on this field, if any">Outpost</th>
-            <th class="sortable" data-key="distance">Distance</th>
-            <th title="Hydrogen to send the selected template here">Fuel Cost</th>
-            <th class="sortable" data-key="recShips" title="Recommended ships to clear the field in 10 mining cycles">Ships Recommendation</th>
+            <th title="派出采矿舰队"></th>
+            <th class="sortable" data-key="system">星系</th>
+            <th class="sortable" data-key="type">类型</th>
+            <th class="sortable" data-key="mult" title="丰度倍率">倍率</th>
+            <th class="sortable" data-key="remaining" title="剩余资源 / 资源总量">资源量</th>
+            <th class="sortable" data-key="leftPct" title="仍然存在的资源百分比">剩余比例</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="ownerName" title="该小行星带上前哨站的所有者（如有）">前哨站</th>
+            <th class="sortable" data-key="distance">距离</th>
+            <th title="将所选模板派往此处需要消耗的氢">燃料成本</th>
+            <th class="sortable" data-key="recShips" title="在 10 个采矿周期内采完该小行星带的推荐舰船">舰船推荐</th>
           </tr>
         </thead>
         <tbody id="af-results-tbody"></tbody>
@@ -710,23 +717,23 @@
 
   <div id="scouting-content" style="display:none;">
     <div class="finder-controls">
-      <label>Survey From
+      <label>勘测出发点
         <select id="sc-planet"></select>
       </label>
-      <label>Zone
+      <label>区域
         <span id="sc-zone" style="display:flex; gap:4px;"></span>
       </label>
-      <label>Probe template
+      <label>探测器模板
         <select id="sc-scan-template"></select>
       </label>
-      <button id="sc-scan">Launch Scan</button>
+      <button id="sc-scan">发起扫描</button>
       <span id="sc-progress" style="color:#8b949e; font-size:0.8rem;"></span>
-      <span id="sc-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Fleet slots in use"></span>
+      <span id="sc-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="已占用舰队槽位"></span>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Scanning fleets in transit</h2>
+        <h2>航行中的扫描舰队</h2>
         <span id="sc-transit-count" style="color:#8b949e; font-size:0.8rem;"></span>
       </div>
       <div id="sc-transit-list" style="display:flex; flex-direction:column; gap:10px;"></div>
@@ -734,25 +741,25 @@
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Active surveys (awaiting investigation)</h2>
+        <h2>待调查的有效勘测</h2>
         <span id="sc-count" style="color:#8b949e; font-size:0.8rem;"></span>
-        <label style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Investigate template
+        <label style="margin-left:auto; color:#8b949e; font-size:0.85rem;">调查模板
           <select id="sc-inv-template"></select>
         </label>
-        <button id="sc-refresh">Refresh</button>
+        <button id="sc-refresh">刷新</button>
       </div>
       <div id="sc-inv-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
       <table>
         <thead>
           <tr>
-            <th title="Send investigation fleet"></th>
-            <th title="Fleet progress while investigating">Progress</th>
-            <th>System</th>
-            <th>Anomaly</th>
-            <th>Zone</th>
-            <th title="Hydrogen to send the selected investigate template">Fuel Cost</th>
-            <th title="One-way travel time for the selected template">Travel Time</th>
-            <th>Expires in</th>
+            <th title="派出调查舰队"></th>
+            <th title="调查期间的舰队进度">进度</th>
+            <th>星系</th>
+            <th>异常点</th>
+            <th>区域</th>
+            <th title="派出所选调查模板需要消耗的氢">燃料成本</th>
+            <th title="所选模板的单程航行时间">航行时间</th>
+            <th>剩余有效期</th>
           </tr>
         </thead>
         <tbody id="sc-surveys-tbody"></tbody>
@@ -761,38 +768,38 @@
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Live debris fields</h2>
+        <h2>当前残骸区</h2>
         <span id="sc-debris-last" style="color:#8b949e; font-size:0.8rem;"></span>
         <span id="sc-debris-zone" style="display:flex; gap:4px; margin-left:12px;"></span>
         <label style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:#8b949e; margin-left:12px;">
-          <input type="checkbox" id="sc-debris-invonly" class="m-switch" title="Show only debris in systems you've investigated before.">
-          Investigated only
+          <input type="checkbox" id="sc-debris-invonly" class="m-switch" title="只显示曾经调查过的星系内的残骸。">
+          仅已调查
         </label>
         <label style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:#8b949e; margin-left:12px;">
-          <input type="checkbox" id="sc-debris-nearest" class="m-switch" title="Collect from your nearest owned planet per field instead of the selected planet.">
-          Nearest planet
+          <input type="checkbox" id="sc-debris-nearest" class="m-switch" title="每个残骸区都从你最近的自有星球出发，而不是所选星球。">
+          最近星球
         </label>
-        <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Collect with:</span>
+        <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">使用以下舰船回收：</span>
         <span id="sc-debris-ships" style="display:flex; gap:6px; align-items:center;"></span>
         <button id="sc-debris-hidden" style="display:none;"></button>
-        <button id="sc-debris-refresh">Refresh</button>
+        <button id="sc-debris-refresh">刷新</button>
       </div>
       <div id="sc-debris-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
       <table>
         <thead id="sc-debris-head">
           <tr>
-            <th title="Send collection fleet"></th>
-            <th title="Fleet progress while collecting">Progress</th>
-            <th class="sortable" data-key="system">System</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th class="sortable" data-key="ore">Ore</th>
-            <th class="sortable" data-key="silicates">Silicates</th>
-            <th class="sortable" data-key="alloys">Alloys</th>
-            <th class="sortable" data-key="total" title="Ore + silicates + alloys">Total</th>
-            <th title="Ships needed to collect it all with the selected types">Number of Ships</th>
-            <th title="Hydrogen to send the selected collect template">Fuel Cost</th>
-            <th title="One-way travel time for the planned fleet">Travel Time</th>
-            <th title="Hide/unhide row"></th>
+            <th title="派出回收舰队"></th>
+            <th title="回收期间的舰队进度">进度</th>
+            <th class="sortable" data-key="system">星系</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th class="sortable" data-key="ore">矿石</th>
+            <th class="sortable" data-key="silicates">硅酸盐</th>
+            <th class="sortable" data-key="alloys">合金</th>
+            <th class="sortable" data-key="total" title="矿石 + 硅酸盐 + 合金">总计</th>
+            <th title="使用所选舰种全部回收所需的舰船数">舰船数量</th>
+            <th title="派出所选回收模板需要消耗的氢">燃料成本</th>
+            <th title="规划舰队的单程航行时间">航行时间</th>
+            <th title="隐藏或恢复该行"></th>
           </tr>
         </thead>
         <tbody id="sc-debris-tbody"></tbody>
@@ -801,23 +808,23 @@
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Uncollected salvage</h2>
+        <h2>尚未回收的残骸</h2>
         <span id="sc-salvage-count" style="color:#8b949e; font-size:0.8rem;"></span>
-        <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">Uses the cargo ships selected above.</span>
+        <span style="margin-left:auto; color:#8b949e; font-size:0.85rem;">使用上方选择的货运舰船。</span>
       </div>
       <table>
         <thead id="sc-salvage-head">
           <tr>
-            <th title="Send collection fleet"></th>
-            <th title="Fleet progress while collecting">Progress</th>
-            <th class="sortable" data-key="system">System</th>
-            <th class="sortable" data-key="zone">Zone</th>
-            <th>Resources left</th>
-            <th class="sortable" data-key="total" title="All uncollected resources">Total</th>
-            <th title="Ships needed to collect it all with the selected types">Number of Ships</th>
-            <th title="Hydrogen to send the planned fleet">Fuel Cost</th>
-            <th title="One-way travel time for the planned fleet">Travel Time</th>
-            <th title="Salvage expiry">Expires in</th>
+            <th title="派出回收舰队"></th>
+            <th title="回收期间的舰队进度">进度</th>
+            <th class="sortable" data-key="system">星系</th>
+            <th class="sortable" data-key="zone">区域</th>
+            <th>剩余资源</th>
+            <th class="sortable" data-key="total" title="全部尚未回收的资源">总计</th>
+            <th title="使用所选舰种全部回收所需的舰船数">舰船数量</th>
+            <th title="派出规划舰队需要消耗的氢">燃料成本</th>
+            <th title="规划舰队的单程航行时间">航行时间</th>
+            <th title="残骸失效时间">剩余有效期</th>
           </tr>
         </thead>
         <tbody id="sc-salvage-tbody"></tbody>
@@ -827,25 +834,25 @@
 
   <div id="xeno-content" style="display:none;">
     <div class="finder-controls">
-      <label>Survey From
+      <label>勘测出发点
         <select id="xn-planet"></select>
       </label>
-      <label>Fleet template
+      <label>舰队模板
         <select id="xn-template"></select>
       </label>
-      <button id="xn-scan">Launch Ruins Survey</button>
+      <button id="xn-scan">发起遗迹勘测</button>
       <span id="xn-progress" style="color:#8b949e; font-size:0.8rem;"></span>
-      <span id="xn-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="Fleet slots in use"></span>
+      <span id="xn-slots" style="margin-left:auto; color:#8b949e; font-size:0.8rem;" title="已占用舰队槽位"></span>
     </div>
     <div id="xn-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
     <div style="color:#8b949e; font-size:0.8rem; margin-bottom:8px;">
-      Finds the nearest system with an unowned Ancient moon not already targeted by an in-flight ruins survey,
-      then launches one there with the selected fleet template.
+      查找最近的无主远古卫星，且该目标尚未被航行中的遗迹勘测占用，
+      然后使用所选舰队模板向该处发起勘测。
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Ruins survey fleets in transit</h2>
+        <h2>航行中的遗迹勘测舰队</h2>
         <span id="xn-transit-count" style="color:#8b949e; font-size:0.8rem;"></span>
       </div>
       <div id="xn-transit-list" style="display:flex; flex-direction:column; gap:10px;"></div>
@@ -853,53 +860,53 @@
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Moons on cooldown</h2>
+        <h2>冷却中的卫星</h2>
         <span id="xn-cooldown-count" style="color:#8b949e; font-size:0.8rem;"></span>
       </div>
       <table>
         <thead>
           <tr>
-            <th>Moon</th>
-            <th>System</th>
-            <th>Available in</th>
+            <th>卫星</th>
+            <th>星系</th>
+            <th>剩余冷却时间</th>
           </tr>
         </thead>
         <tbody id="xn-cooldown-tbody"></tbody>
       </table>
     </div>
 
-    <div class="section-label">Loot collected — ruins surveys</div>
+    <div class="section-label">遗迹勘测收集的战利品</div>
     <div class="stats" id="xn-stats-collected"></div>
 
-    <div class="section-label">Ships lost (build cost)</div>
+    <div class="section-label">损失舰船（建造成本）</div>
     <div class="stats" id="xn-stats-lost"></div>
 
     <div class="charts">
       <div class="chart-box">
-        <h2>Loot per period</h2>
+        <h2>各时段战利品</h2>
         <canvas id="chart-xeno"></canvas>
       </div>
       <div class="chart-box">
-        <h2>Loot composition</h2>
+        <h2>战利品构成</h2>
         <canvas id="chart-xeno-comp"></canvas>
       </div>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Ruins survey reports</h2>
+        <h2>遗迹勘测报告</h2>
         <div class="pagination">
-          <button id="xn-report-btn-prev">← Prev</button>
-          <span id="xn-report-page-info">Page 1</span>
-          <button id="xn-report-btn-next">Next →</button>
+          <button id="xn-report-btn-prev">← 上一页</button>
+          <span id="xn-report-page-info">第 1 页</span>
+          <button id="xn-report-btn-next">下一页 →</button>
         </div>
       </div>
       <table>
         <thead id="xn-reports-head">
           <tr>
-            <th class="sortable" data-key="created_at">Date</th>
-            <th class="sortable" data-key="precursor_fragments">Precursor Fragments</th>
-            <th class="sortable" data-key="artifact">Artifacts</th>
+            <th class="sortable" data-key="created_at">日期</th>
+            <th class="sortable" data-key="precursor_fragments">先驱碎片</th>
+            <th class="sortable" data-key="artifact">遗物</th>
           </tr>
         </thead>
         <tbody id="xn-reports-tbody"></tbody>
@@ -909,19 +916,19 @@
 
   <div id="fleets-content" style="display:none;">
     <div class="finder-controls">
-      <label>Template
+      <label>模板
         <select id="ft-select"></select>
       </label>
-      <button id="ft-new">New</button>
-      <button id="ft-delete">Delete</button>
-      <label>Name
+      <button id="ft-new">新建</button>
+      <button id="ft-delete">删除</button>
+      <label>名称
         <input id="ft-name" type="text" style="width:160px; background:#21262d; border:1px solid #30363d;
                color:#e6edf3; padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
     </div>
 
     <div class="fleet-box">
-      <h2 class="fleet-title attacker" id="ft-box-title">Fleet</h2>
+      <h2 class="fleet-title attacker" id="ft-box-title">舰队</h2>
       <span id="ft-status" style="color:#8b949e; font-size:0.8rem;"></span>
       <div id="ft-legend" style="display:flex; flex-wrap:wrap; gap:10px 16px; margin:6px 0 10px; font-size:0.78rem;"></div>
       <table class="fleet-table"><tbody id="ft-ships"></tbody></table>
@@ -931,51 +938,51 @@
   <div id="market-content" style="display:none;">
     <div class="controls" style="margin-top:0; align-items:flex-start;">
       <div class="m-filter">
-        <label>Market:</label>
+        <label>市场：</label>
         <span style="display:flex; align-items:center; gap:7px; font-size:0.8rem; color:#8b949e;">
-          <span>Public</span>
-          <input type="checkbox" id="m-source" class="m-switch" title="Switch between public market and alliance trade">
-          <span>Alliance</span>
+          <span>公开市场</span>
+          <input type="checkbox" id="m-source" class="m-switch" title="在公开市场与联盟交易之间切换">
+          <span>联盟交易</span>
         </span>
       </div>
       <div class="m-filter" style="margin-left:12px;">
-        <label>Buy (offered):</label>
+        <label>购入（对方提供）：</label>
         <span id="m-buy" class="res-icons"></span>
       </div>
       <div class="m-filter" style="margin-left:12px;">
-        <label>Sell (you pay):</label>
+        <label>卖出（你方支付）：</label>
         <span id="m-sell" class="res-icons"></span>
       </div>
       <div class="m-filter" style="margin-left:12px;">
-        <label for="m-ratio-wanted">Ratio wanted ≥</label>
-        <input id="m-ratio-wanted" type="number" min="0" step="0.001" placeholder="any"
+        <label for="m-ratio-wanted">期望比率 ≥</label>
+        <input id="m-ratio-wanted" type="number" min="0" step="0.001" placeholder="任意"
                style="width:80px; background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </div>
-      <button id="m-clear" style="margin-left:12px;">Clear filters</button>
-      <button id="m-refresh" style="margin-left:12px;">Refresh</button>
+      <button id="m-clear" style="margin-left:12px;">清除筛选</button>
+      <button id="m-refresh" style="margin-left:12px;">刷新</button>
       <span id="m-progress" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
     </div>
 
     <div class="reports-section">
       <div class="reports-header">
-        <h2>Open offers</h2>
+        <h2>当前报价</h2>
         <span id="m-count" style="color:#8b949e; font-size:0.8rem;"></span>
         <span style="color:#8b949e; font-size:0.75rem; display:flex; align-items:center; gap:6px;">
-          Deal vs market average:
-          <span style="background:rgba(88,130,96,0.55); padding:1px 7px; border-radius:4px; color:#e6edf3;">above</span>
-          <span style="background:rgba(150,96,94,0.55); padding:1px 7px; border-radius:4px; color:#e6edf3;">below</span>
-          <span style="opacity:0.7;">deeper shade = further from the pair average (worst 5% ignored)</span>
+          相对市场均价：
+          <span style="background:rgba(88,130,96,0.55); padding:1px 7px; border-radius:4px; color:#e6edf3;">更优</span>
+          <span style="background:rgba(150,96,94,0.55); padding:1px 7px; border-radius:4px; color:#e6edf3;">更差</span>
+          <span style="opacity:0.7;">颜色越深，偏离该资源对均价越多（忽略最差的 5%）</span>
         </span>
       </div>
       <table>
         <thead id="m-head">
           <tr>
-            <th class="sortable" data-key="hub" id="m-hub-col">Hub</th>
-            <th class="sortable" data-key="username">Seller</th>
-            <th class="sortable" data-key="offerResource">Offering</th>
-            <th class="sortable" data-key="requestResource">For</th>
-            <th class="sortable" data-key="rate" title="Cost of one unit of the offered resource">Rate</th>
-            <th class="sortable" data-key="ratio" title="Received per unit paid — higher is a better deal">Ratio</th>
+            <th class="sortable" data-key="hub" id="m-hub-col">枢纽</th>
+            <th class="sortable" data-key="username">卖家</th>
+            <th class="sortable" data-key="offerResource">提供</th>
+            <th class="sortable" data-key="requestResource">换取</th>
+            <th class="sortable" data-key="rate" title="每单位所提供资源的成本">汇率</th>
+            <th class="sortable" data-key="ratio" title="每支付一单位可获得的数量，越高越划算">比率</th>
           </tr>
         </thead>
         <tbody id="m-tbody"></tbody>
@@ -985,26 +992,26 @@
 
   <div id="techtree-content" style="display:none;">
     <div class="controls" style="margin-top:0;">
-      <label for="tt-branch">Branch:</label>
+      <label for="tt-branch">分支：</label>
       <select id="tt-branch">
-        <option value="all">All branches</option>
+        <option value="all">全部分支</option>
       </select>
-      <button id="tt-fit">Fit width</button>
-      <input id="tt-search" type="search" placeholder="Search tech…" style="margin-left:8px;">
+      <button id="tt-fit">适应宽度</button>
+      <input id="tt-search" type="search" placeholder="搜索科技…" style="margin-left:8px;">
       <span id="tt-summary" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
     </div>
     <div id="tt-legend"></div>
     <div class="tt-main">
       <div id="techtree"></div>
       <aside id="tt-queue">
-        <h3>Research queue</h3>
+        <h3>研究队列</h3>
         <div id="tt-launch-planet" style="display:none;">
-          <label for="tt-planet-select">Launch on:</label>
+          <label for="tt-planet-select">研究星球：</label>
           <select id="tt-planet-select"></select>
         </div>
-        <div id="tt-queue-list" class="tt-queue-empty">Click <b>+</b> on a tech to plan it.</div>
+        <div id="tt-queue-list" class="tt-queue-empty">点击科技上的 <b>+</b> 将其加入计划。</div>
         <div id="tt-queue-totals"></div>
-        <button id="tt-queue-clear" style="display:none;">Clear queue</button>
+        <button id="tt-queue-clear" style="display:none;">清空队列</button>
       </aside>
     </div>
   </div>
@@ -1014,6 +1021,7 @@
 
   <!-- Load order: polyfill + common.js first, tabs next, orchestrator last. -->
   <script src="browser-polyfill.js"></script>
+  <script src="server-storage.js"></script>
   <script src="chart.umd.js"></script>
   <script type="module" src="dashboard.js"></script>
 </body>

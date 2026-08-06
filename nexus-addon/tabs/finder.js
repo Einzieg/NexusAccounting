@@ -2,6 +2,8 @@
 
 // ── Planet Finder tab ──────────────────────────────────────────────────────
 
+import { uiLabel } from '../common.js';
+
 export const SCAN_CACHE_TTL = 24 * 3600 * 1000;   // planets rarely change
 
 export const SCAN_CACHE_MAX = 800;                // systems kept in the cache
@@ -46,7 +48,7 @@ export async function initFinderTab() {
   if (finderInited) return;
   finderInited = true;
   const status = document.getElementById('f-progress');
-  status.textContent = 'Loading galaxy map…';
+  status.textContent = '正在加载星系地图…';
   const [arms, map, me, ally, hubs] = await Promise.all([
     browser.runtime.sendMessage({ type: 'GET_ARMS' }),
     browser.runtime.sendMessage({ type: 'GET_GALAXY_MAP' }),
@@ -55,7 +57,7 @@ export async function initFinderTab() {
     browser.runtime.sendMessage({ type: 'GET_HUBS' }),
   ]);
   if (arms.error || map.error) {
-    status.textContent = `Error: ${arms.error || map.error}`;
+    status.textContent = `错误：${arms.error || map.error}`;
     finderInited = false;
     return;
   }
@@ -108,11 +110,11 @@ export async function initFinderTab() {
   const zones = [...new Set(galaxySystems.map(s => s.securityZone).filter(Boolean))].sort();
   for (const z of zones) {
     const o = document.createElement('option');
-    o.value = z; o.textContent = z;
+    o.value = z; o.textContent = uiLabel(z);
     zsel.appendChild(o);
   }
 
-  status.textContent = `${galaxySystems.length} systems loaded.`;
+  status.textContent = `已加载 ${galaxySystems.length} 个星系。`;
   drawGalaxyMap();
 }
 
@@ -264,13 +266,13 @@ export function moonCount(planet, moons) {
 export function moonList(planet, moons) {
   return (moons || [])
     .filter(m => m.planetId === planet.id || m.parentPlanetId === planet.id)
-    .map(m => ({ type: (m.moonType || '?').replace(/_/g, ' '), slots: m.buildingSlots ?? 0 }));
+    .map(m => ({ type: m.moonType || '?', slots: m.buildingSlots ?? 0 }));
 }
 
 // Plain-text moon summary (for the expandable per-system list): "metallic (6 slots)".
 export function moonSummary(planet, moons) {
   const list = moonList(planet, moons);
-  return list.length ? list.map(m => `${m.type} (${m.slots} slots)`).join(', ') : '—';
+  return list.length ? list.map(m => `${uiLabel(m.type)}（${m.slots} 个槽位）`).join('，') : '—';
 }
 
 const MOON_COLORS = {
@@ -284,7 +286,7 @@ function buildMoonCell(td, list) {
   list.forEach((m, i) => {
     if (i) td.appendChild(document.createTextNode(', '));
     const sp = document.createElement('span');
-    sp.textContent = m.type;
+    sp.textContent = uiLabel(m.type);
     sp.style.color = MOON_COLORS[m.type] || '#c9d1d9';
     td.appendChild(sp);
     td.appendChild(document.createTextNode(` (${m.slots})`));
@@ -312,7 +314,7 @@ document.getElementById('f-search').addEventListener('click', async function () 
   const ownership = document.getElementById('f-ownership').value; // '' | 'unowned' | 'owned'
   const excludeMine = document.getElementById('f-exclude-mine').checked;
 
-  const { planet_scan_cache } = await browser.storage.local.get('planet_scan_cache');
+  const { planet_scan_cache } = await globalThis.nexusStorage.get('planet_scan_cache');
   const cache = planet_scan_cache || {};
   const cachedIds = new Set(Object.keys(cache).map(Number));
 
@@ -327,12 +329,12 @@ document.getElementById('f-search').addEventListener('click', async function () 
 
   const status = document.getElementById('f-progress');
   if (!candidates.length) {
-    status.textContent = 'No scanned systems in that region — explore it first or import galaxy data.';
+    status.textContent = '该区域没有已扫描星系，请先探索或导入星系数据。';
     return;
   }
 
   finderRunning = true;
-  this.textContent = 'Stop';
+  this.textContent = '停止';
   finderHits = [];
   hitSystems = {};
   allianceSystems = {};
@@ -378,18 +380,18 @@ document.getElementById('f-search').addEventListener('click', async function () 
           rankMil: null, rankEco: null, rankRes: null,
         });
         if (!hitSystems[s.id]) hitSystems[s.id] = { planets: [] };
-        hitSystems[s.id].planets.push(`${p.name} (${p.planetType}, ${p.size}, ${nMoons} moons${nMoons ? ': ' + moonSummary(p, moons) : ''})`);
+        hitSystems[s.id].planets.push(`${p.name}（${uiLabel(p.planetType)}，尺寸 ${p.size}，${nMoons} 颗卫星${nMoons ? '：' + moonSummary(p, moons) : ''}）`);
       }
       done++;
       if (done % 10 === 0) {
-        status.textContent = `Scanning… ${done}/${candidates.length} systems, ${finderHits.length} matches.`;
+        status.textContent = `正在扫描… ${done}/${candidates.length} 个星系，找到 ${finderHits.length} 个匹配项。`;
         drawGalaxyMap();
       }
       await new Promise(r => setTimeout(r, 80)); // be polite to the game API
     }
   } finally {
     finderRunning = false;
-    this.textContent = 'Search';
+    this.textContent = '搜索';
   }
 
   // Persist the scan cache, oldest entries dropped first.
@@ -399,11 +401,11 @@ document.getElementById('f-search').addEventListener('click', async function () 
       .slice(0, ids.length - SCAN_CACHE_MAX)
       .forEach(id => delete cache[id]);
   }
-  await browser.storage.local.set({ planet_scan_cache: cache });
+  await globalThis.nexusStorage.set({ planet_scan_cache: cache });
 
-  status.textContent = `Done: ${finderHits.length} matches in ${done} scanned systems` +
-    (fogged ? ` · ${fogged} unexplored` : '') +
-    (errors ? ` · ${errors} systems skipped (errors)` : '') + '.';
+  status.textContent = `完成：在 ${done} 个已扫描星系中找到 ${finderHits.length} 个匹配项` +
+    (fogged ? ` · ${fogged} 个未探索` : '') +
+    (errors ? ` · 因错误跳过 ${errors} 个星系` : '') + '。';
   drawGalaxyMap();
   renderFinderResults();
 
@@ -414,16 +416,16 @@ document.getElementById('f-search').addEventListener('click', async function () 
   for (let i = 0; i < missing.length; i++) {
     const r = await browser.runtime.sendMessage({ type: 'GET_PLAYER_RANK', name: missing[i] });
     rankCache[missing[i]] = (r && !r.error) ? r : { military: null, economy: null, research: null };
-    status.textContent = `Fetching player ranks… ${i + 1}/${missing.length}`;
+    status.textContent = `正在获取玩家排名… ${i + 1}/${missing.length}`;
     await new Promise(res => setTimeout(res, 80));
   }
   finderHits.forEach(h => {
     const r = h.owner ? rankCache[h.owner] : null;
     if (r) { h.rankMil = r.military ?? null; h.rankEco = r.economy ?? null; h.rankRes = r.research ?? null; }
   });
-  status.textContent = `Done: ${finderHits.length} matches in ${done} scanned systems` +
-    (fogged ? ` · ${fogged} unexplored` : '') +
-    (errors ? ` · ${errors} systems skipped (errors)` : '') + '.';
+  status.textContent = `完成：在 ${done} 个已扫描星系中找到 ${finderHits.length} 个匹配项` +
+    (fogged ? ` · ${fogged} 个未探索` : '') +
+    (errors ? ` · 因错误跳过 ${errors} 个星系` : '') + '。';
   renderFinderResults();
 });
 
@@ -440,7 +442,7 @@ document.getElementById('f-results-head').addEventListener('click', e => {
 export function renderFinderResults() {
   const tbody = document.getElementById('f-results-tbody');
   tbody.textContent = '';
-  document.getElementById('f-match-count').textContent = `${finderHits.length} planets`;
+  document.getElementById('f-match-count').textContent = `${finderHits.length} 颗星球`;
 
   // Header arrows
   document.querySelectorAll('#f-results-head th.sortable').forEach(th => {
@@ -467,10 +469,10 @@ export function renderFinderResults() {
   });
   for (const h of sorted) {
     const tr = document.createElement('tr');
-    const cells = [h.planet, h.system, String(h.sector), String(h.type ?? '—').replace(/_/g, ' '),
+  const cells = [h.planet, h.system, String(h.sector), uiLabel(h.type ?? '—'),
                    String(h.size), (h.temp == null ? '—' : `${h.temp}°`),
                    null,   // moon cell built below (coloured type + size)
-                   h.zone || '—', (h.distance == null ? '—' : String(h.distance)), h.owner || '—',
+                   uiLabel(h.zone || '—'), (h.distance == null ? '—' : String(h.distance)), h.owner || '—',
                    h.alliance || '—',
                    (h.rankMil == null ? '—' : `#${h.rankMil}`),
                    (h.rankEco == null ? '—' : `#${h.rankEco}`),
@@ -483,7 +485,7 @@ export function renderFinderResults() {
       tr.appendChild(td);
     });
     tr.style.cursor = 'pointer';
-    tr.title = 'Show on map';
+    tr.title = '在地图上显示';
     tr.addEventListener('click', () => focusSystem(h.systemId));
     tbody.appendChild(tr);
   }
@@ -578,10 +580,10 @@ document.getElementById('f-origin').addEventListener('change', e => {
 // Export the scanned-planet knowledge as a JSON file others can import.
 document.getElementById('f-export').addEventListener('click', async () => {
   const status = document.getElementById('f-progress');
-  const { planet_scan_cache } = await browser.storage.local.get('planet_scan_cache');
+  const { planet_scan_cache } = await globalThis.nexusStorage.get('planet_scan_cache');
   const cache = planet_scan_cache || {};
   const count = Object.keys(cache).length;
-  if (!count) { status.textContent = 'Nothing to export — scan some systems first.'; return; }
+  if (!count) { status.textContent = '没有可导出的数据，请先扫描一些星系。'; return; }
   const payload = { type: 'nexus_galaxy_scan', version: 1, exported_at: new Date().toISOString(), scans: cache };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -590,7 +592,7 @@ document.getElementById('f-export').addEventListener('click', async () => {
   a.download = `nexus-galaxy-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-  status.textContent = `Exported ${count} systems.`;
+  status.textContent = `已导出 ${count} 个星系。`;
 });
 
 // Import shared knowledge, merging by freshest scan per system.
@@ -604,8 +606,8 @@ document.getElementById('f-import-file').addEventListener('change', async (e) =>
   try {
     const payload = JSON.parse(await file.text());
     const scans = payload.scans || payload;   // tolerate a raw cache object too
-    if (!scans || typeof scans !== 'object') throw new Error('not a galaxy export');
-    const { planet_scan_cache } = await browser.storage.local.get('planet_scan_cache');
+    if (!scans || typeof scans !== 'object') throw new Error('该文件不是星系数据导出文件');
+    const { planet_scan_cache } = await globalThis.nexusStorage.get('planet_scan_cache');
     const cache = planet_scan_cache || {};
     let added = 0, updated = 0;
     for (const [sid, entry] of Object.entries(scans)) {
@@ -620,10 +622,10 @@ document.getElementById('f-import-file').addEventListener('change', async (e) =>
         .slice(0, ids.length - SCAN_CACHE_MAX)
         .forEach(id => delete cache[id]);
     }
-    await browser.storage.local.set({ planet_scan_cache: cache });
-    status.textContent = `Imported: ${added} new, ${updated} updated systems. Run a search to use them.`;
+    await globalThis.nexusStorage.set({ planet_scan_cache: cache });
+    status.textContent = `导入完成：新增 ${added} 个、更新 ${updated} 个星系。请运行一次搜索以使用这些数据。`;
   } catch (err) {
-    status.textContent = `Import failed: ${err.message}`;
+    status.textContent = `导入失败：${err.message}`;
   } finally {
     e.target.value = '';   // allow re-importing the same file
   }
