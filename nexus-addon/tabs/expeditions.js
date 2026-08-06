@@ -2,7 +2,7 @@
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, uiLabel, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
@@ -13,11 +13,11 @@ export let expPage = 1;
 // through the game tab like every other mission dispatch (background.js's
 // gamePost). "Scout Rift" is a known-broken combo per the player, left out.
 const EXPEDITION_PRESETS = {
-  balanced:       { label: 'Balanced (Rift)',      zone: 'rift', depth: 2, ships: [['stealth_ship', 1], ['scout', 10], ['freighter', 5]] },
-  loot_run:       { label: 'Loot Run (Dead)',       zone: 'dead', depth: 2, ships: [['stealth_ship', 2], ['scout', 10], ['hacker_ship', 1], ['freighter', 4]] },
-  combat_rift:    { label: 'Combat Rift (Rift)',    zone: 'rift', depth: 3, ships: [['scout', 5]] },
-  deep_dead_dive: { label: 'Deep Dead Dive (Dead)', zone: 'dead', depth: 3, ships: [['stealth_ship', 5], ['scout', 2], ['hacker_ship', 3]] },
-  lean_dead_run:  { label: 'Lean Dead Run (Dead)',  zone: 'dead', depth: 1, ships: [['stealth_ship', 2], ['scout', 2], ['hacker_ship', 1]] },
+  balanced:       { label: '均衡配置（裂隙区）',       zone: 'rift', depth: 2, ships: [['stealth_ship', 1], ['scout', 10], ['freighter', 5]] },
+  loot_run:       { label: '战利品收集（死亡区）',     zone: 'dead', depth: 2, ships: [['stealth_ship', 2], ['scout', 10], ['hacker_ship', 1], ['freighter', 4]] },
+  combat_rift:    { label: '裂隙战斗（裂隙区）',       zone: 'rift', depth: 3, ships: [['scout', 5]] },
+  deep_dead_dive: { label: '死亡区深潜（死亡区）',     zone: 'dead', depth: 3, ships: [['stealth_ship', 5], ['scout', 2], ['hacker_ship', 3]] },
+  lean_dead_run:  { label: '精简死亡区配置（死亡区）', zone: 'dead', depth: 1, ships: [['stealth_ship', 2], ['scout', 2], ['hacker_ship', 1]] },
 };
 // Valid depth range per zone — Rift starts at 2, both cap at 4.
 const DEPTH_RANGE = {
@@ -57,7 +57,7 @@ async function initExpeditionLaunch() {
   if (saved['e-launch-zone']) document.getElementById('e-launch-zone').value = saved['e-launch-zone'];
 
   await refreshExpeditionTemplates();
-  browser.storage.onChanged.addListener((changes, area) => {
+  globalThis.nexusStorage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.fleet_templates) refreshExpeditionTemplates();
   });
 
@@ -104,7 +104,7 @@ async function refreshExpeditionTemplates() {
   sel.textContent = '';
   if (!eTemplates.length) {
     const o = document.createElement('option');
-    o.value = ''; o.textContent = '— none (create in Fleet Templates) —';
+    o.value = ''; o.textContent = '— 无（请在“舰队模板”中创建）—';
     sel.appendChild(o);
   } else {
     for (const t of eTemplates) {
@@ -156,18 +156,18 @@ async function resolveExpeditionShips(planetId) {
     name = preset.label;
   } else {
     const tpl = eTemplates.find(t => String(t.id) === document.getElementById('e-launch-template').value);
-    if (!tpl) return { error: 'No fleet template selected — create one in Fleet Templates.' };
+    if (!tpl) return { error: '未选择舰队模板，请先在“舰队模板”中创建。' };
     wanted = Object.entries(tpl.ships || {}).map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }));
     name = tpl.name;
   }
   wanted = wanted.filter(s => s.quantity > 0);
-  if (!wanted.length) return { error: `"${name}" has no ships.` };
+  if (!wanted.length) return { error: `“${name}”中没有舰船。` };
 
   const seed = Object.fromEntries(wanted.map(s => [s.shipDefId, s.quantity]));
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
-  if (!ships.length) return { error: `None of "${name}"'s ships are on this planet.` };
+  if (!ships.length) return { error: `该星球上没有“${name}”中的任何舰船。` };
   return { ships, seed, avail: av.available, name };
 }
 
@@ -177,7 +177,7 @@ async function updateExpeditionAvail() {
   if (!planetId || !eAllShips.length) { clearAvailStrip(box); return; }
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) { clearAvailStrip(box, av.error); return; }
-  renderAvailStrip(box, eAllShips, av.available, 'No ships on this planet.');
+  renderAvailStrip(box, eAllShips, av.available, '该星球上没有舰船。');
 }
 
 // In-flight expedition fleets, refreshed alongside the "X/2 active" count —
@@ -191,7 +191,7 @@ async function refreshExpeditionMissions() {
   if (mi.error) return;
   eMissions = (mi.missions || []).filter(m => m.missionType === 'expedition');
   const activeEl = document.getElementById('e-launch-active');
-  if (activeEl) activeEl.textContent = `${eMissions.length}/2 expeditions active`;
+  if (activeEl) activeEl.textContent = `远征 ${eMissions.length}/2`;
   renderExpeditionTransit();
 }
 
@@ -200,16 +200,16 @@ function renderExpeditionTransit() {
   if (!box) return;
   box.textContent = '';
   eTicks = [];
-  document.getElementById('e-transit-count').textContent = `${eMissions.length} in flight`;
+  document.getElementById('e-transit-count').textContent = `${eMissions.length} 支航行中`;
   if (!eMissions.length) {
     const d = document.createElement('div');
     d.style.cssText = 'color:#484f58; padding:4px 0;';
-    d.textContent = 'No expeditions in transit.';
+    d.textContent = '当前没有航行中的远征舰队。';
     box.appendChild(d);
     return;
   }
   for (const m of eMissions) {
-    const target = m.targetSystemName || m.targetPlanetName || (m.zone ? `${m.zone} (depth ${m.depth ?? '?'})` : `#${m.id}`);
+    const target = m.targetSystemName || m.targetPlanetName || (m.zone ? `${uiLabel(m.zone)}（深度 ${m.depth ?? '?'}）` : `#${m.id}`);
     const row = document.createElement('div');
     const head = document.createElement('div');
     head.style.cssText = 'display:flex; align-items:baseline; gap:8px; font-size:0.85rem; margin-bottom:3px;';
@@ -237,18 +237,18 @@ async function launchExpedition() {
   if (r.error) { status.textContent = r.error; return; }
 
   const ships = await editFleetDialog({
-    title: 'Launch expedition',
-    subtitle: `From: ${planet ? planet.name : planetId}\nZone: ${zone} · Depth: ${depth}\nFleet: ${r.name}`,
+    title: '发起远征',
+    subtitle: `出发点：${planet ? planet.name : planetId}\n区域：${uiLabel(zone)} · 深度：${depth}\n舰队：${r.name}`,
     avail: r.avail, seed: r.seed,
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
 
-  status.textContent = 'Launching…';
+  status.textContent = '正在发起…';
   const res = await browser.runtime.sendMessage({
     type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships, zone, depth,
   });
-  if (res.error) { status.textContent = `Launch failed: ${res.error}`; return; }
-  status.textContent = 'Expedition launched ✓';
+  if (res.error) { status.textContent = `发起失败：${res.error}`; return; }
+  status.textContent = '远征已发起 ✓';
   updateExpeditionAvail();
   refreshExpeditionMissions();
   setTimeout(refreshExpeditionMissions, 2000);   // retry for post-POST API lag
@@ -294,19 +294,19 @@ export function renderExpeditionsTab() {
   if (!t.missions) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
-    p.textContent = 'No expedition reports recorded yet.';
+    p.textContent = '尚未记录远征报告。';
     el.appendChild(p);
   } else {
     el.append(
-      makeStatCard(`Ore${periodLabel}`, fmt(t.ore), 'ore'),
-      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
-      makeStatCard(`Hydrogen${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
+      makeStatCard(`矿石${periodLabel}`, fmt(t.ore), 'ore'),
+      makeStatCard(`硅酸盐${periodLabel}`, fmt(t.silicates), 'silicates'),
+      makeStatCard(`氢${periodLabel}`, fmt(t.hydrogen), 'hydrogen'),
     );
     appendExtraResourceCards(el, t, periodLabel);
     el.append(
-      makeStatCard(`Missions${periodLabel}`, fmt(t.missions), 'missions'),
-      makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
-      makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('expedition', mode)), 'hydrogen'),
+      makeStatCard(`任务数${periodLabel}`, fmt(t.missions), 'missions'),
+      makeStatCard(`损失舰船${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
+      makeStatCard(`燃料消耗${periodLabel}`, fmt(fuelForMode('expedition', mode)), 'hydrogen'),
     );
   }
 
@@ -315,7 +315,7 @@ export function renderExpeditionsTab() {
 
   if (chartExpeditions) chartExpeditions.destroy();
   chartExpeditions = makeResourceLineChart('chart-expeditions', getExpSeriesForMode(mode),
-    getLabelKey(mode), { field: 'missions', label: 'Missions' });
+    getLabelKey(mode), { field: 'missions', label: '任务数' });
 
   if (chartExpComp) chartExpComp.destroy();
   chartExpComp = makeResourceDoughnut('chart-expeditions-comp', t);
@@ -333,9 +333,9 @@ export function renderExpTable() {
     const tdDate = document.createElement('td');
     tdDate.textContent = new Date(r.created_at).toLocaleString();
     const tdLoc = document.createElement('td');
-    tdLoc.textContent = r.location || '—';
+    tdLoc.textContent = uiLabel(r.location) || '—';
     const tdEvent = document.createElement('td');
-    tdEvent.textContent = r.event ? String(r.event).replace(/_/g, ' ') : '—';
+    tdEvent.textContent = r.event ? uiLabel(r.event) : '—';
     const loot = r.loot || {};
     const tdOre = zeroCell(loot.ore); tdOre.className = 'ore';
     const tdSil = zeroCell(loot.silicates); tdSil.className = 'silicates';

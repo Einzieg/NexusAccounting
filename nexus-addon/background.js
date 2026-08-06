@@ -3,7 +3,9 @@
 // is defined here on both Chrome (polyfilled) and Firefox (native). Tests import
 // this file directly with a stubbed `browser`, skipping the polyfill entirely.
 
-const GAME_URL = 'https://s0.nexuslegacy.space';
+import './server-storage.js';
+
+const gameServer = () => globalThis.nexusStorage.getActiveServer();
 const REPORTS_PATH = '/api/fleet/survey-reports';
 const PIRATES_PATH = '/api/fleet/pirate-reports';
 const PVP_PATH = '/api/fleet/reports';   // player-vs-player combat reports
@@ -33,11 +35,11 @@ const SCHEMA_VERSION = 10;
 browser.runtime.onInstalled.addListener(async details => {
   browser.alarms.create(ALARM, { periodInMinutes: INTERVAL_MIN });
   // Re-arm the asteroid live-search alarm if it was left enabled.
-  const { live_search } = await browser.storage.local.get('live_search');
+  const { live_search } = await globalThis.nexusStorage.get('live_search');
   if (live_search && live_search.enabled) browser.alarms.create(LS_ALARM, { periodInMinutes: LS_INTERVAL_MIN });
   // Snapshot existing data before the new version touches it.
   if (details.reason === 'update') {
-    await browser.storage.local.set({ whatsnew_pending: browser.runtime.getManifest().version });
+    await globalThis.nexusStorage.set({ whatsnew_pending: browser.runtime.getManifest().version });
     try {
       await backupToDownloads(`pre-update-${details.previousVersion || 'unknown'}`);
     } catch (err) {
@@ -63,13 +65,14 @@ const LS_REQ_DELAY_MS = 40;            // polite spacing between API calls
 const LS_ABORT_AFTER_ERRORS = 6;       // bail the scan after this many consecutive API failures
 const lsSectorCache = new Map();       // sectorId → { at, systems }, reused across scans
 const LS_SECTOR_TTL = 15 * 60 * 1000;
+const LS_TYPE_LABELS = { ore: '矿石', gas: '气体', ice: '冰', plasma: '等离子', quantum: '量子尘', dark: '暗物质' };
 
 async function setLiveSearch(config) {
-  await browser.storage.local.set({ live_search: config });
+  await globalThis.nexusStorage.set({ live_search: config });
   if (config && config.enabled) {
     browser.alarms.create(LS_ALARM, { periodInMinutes: LS_INTERVAL_MIN });
     // Config (filter/planet) may have changed — reset seen so matches re-notify.
-    await browser.storage.local.set({ live_search_seen: [] });
+    await globalThis.nexusStorage.set({ live_search_seen: [] });
     liveSearchScan();   // run one immediately so the user isn't waiting 5 min
   } else {
     browser.alarms.clear(LS_ALARM);
@@ -78,8 +81,8 @@ async function setLiveSearch(config) {
 }
 
 async function stopLiveSearch() {
-  const { live_search } = await browser.storage.local.get('live_search');
-  await browser.storage.local.set({ live_search: { ...(live_search || {}), enabled: false } });
+  const { live_search } = await globalThis.nexusStorage.get('live_search');
+  await globalThis.nexusStorage.set({ live_search: { ...(live_search || {}), enabled: false } });
   browser.alarms.clear(LS_ALARM);
   return { ok: true };
 }
@@ -104,7 +107,7 @@ function fieldMatches(f, cfg) {
 }
 
 async function liveSearchScan() {
-  const { live_search: cfg } = await browser.storage.local.get('live_search');
+  const { live_search: cfg } = await globalThis.nexusStorage.get('live_search');
   if (!cfg || !cfg.enabled || cfg.planetId == null) return;
   const token = await getToken();
   if (!token) return;
@@ -157,11 +160,11 @@ async function liveSearchScan() {
       await new Promise(r => setTimeout(r, LS_REQ_DELAY_MS));   // be polite to the game API
     }
 
-    const { live_search_seen } = await browser.storage.local.get('live_search_seen');
+    const { live_search_seen } = await globalThis.nexusStorage.get('live_search_seen');
     const seen = new Set(live_search_seen || []);
     const fresh = matches.filter(m => !seen.has(m.id));
     // Keep the full current match list + timestamp for the on-click results window.
-    await browser.storage.local.set({
+    await globalThis.nexusStorage.set({
       live_search_seen: matches.map(m => m.id),
       live_search_last_matches: matches,
       live_search_last_at: Date.now(),
@@ -172,10 +175,10 @@ async function liveSearchScan() {
       browser.notifications.create(`${LS_ALARM}-${Date.now()}`, {
         type: 'basic',
         iconUrl: browser.runtime.getURL('icons/icon128.png'),
-        title: '🪨 Asteroid match',
+        title: '🪨 发现匹配的小行星场',
         message: fresh.length === 1
-          ? `${top.name} (${top.type}) in ${top.system} matches your live search.`
-          : `${fresh.length} new fields match your live search — incl. ${top.name} in ${top.system}.`,
+          ? `${top.system} 中的 ${top.name}（${LS_TYPE_LABELS[top.type] || top.type}）符合实时搜索条件。`
+          : `发现 ${fresh.length} 个符合实时搜索条件的新目标，包括 ${top.system} 中的 ${top.name}。`,
       });
     }
   } catch (err) {
@@ -185,11 +188,11 @@ async function liveSearchScan() {
 
 // Clicking a live-search notification focuses (or opens) the game tab and asks
 // its content script to show the draggable matches window.
-const GAME_ORIGIN = 'https://s0.nexuslegacy.space/';
 browser.notifications?.onClicked?.addListener(async id => {
   if (!id.startsWith(LS_ALARM)) return;
   browser.notifications.clear(id);
-  const tabs = await browser.tabs.query({ url: '*://s0.nexuslegacy.space/*' });
+  const server = await gameServer();
+  const tabs = await browser.tabs.query({ url: `${server.origin}/*` });
   if (tabs.length) {
     const t = tabs[0];
     await browser.tabs.update(t.id, { active: true });
@@ -197,16 +200,31 @@ browser.notifications?.onClicked?.addListener(async id => {
     browser.tabs.sendMessage(t.id, { type: 'SHOW_LS_RESULTS' }).catch(() => {});
   } else {
     // No game tab open — flag it so the content script shows the panel on load.
-    await browser.storage.local.set({ live_search_open_panel: true });
-    browser.tabs.create({ url: GAME_ORIGIN });
+    await globalThis.nexusStorage.set({ live_search_open_panel: true });
+    browser.tabs.create({ url: `${server.origin}/` });
   }
 });
 
-browser.action.onClicked.addListener(() => {
+browser.action.onClicked.addListener(async tab => {
+  const server = globalThis.nexusStorage.serverFromUrl(tab?.url);
+  if (server) await globalThis.nexusStorage.setActiveServer(server.key);
   browser.tabs.create({ url: browser.runtime.getURL('dashboard.html') });
 });
 
-browser.runtime.onMessage.addListener(msg => {
+browser.runtime.onMessage.addListener((msg, sender) => {
+  const senderServer = globalThis.nexusStorage.serverFromUrl(sender?.tab?.url || sender?.url);
+  if (senderServer) {
+    return globalThis.nexusStorage.setActiveServer(senderServer.key).then(() => handleMessage(msg));
+  }
+  return handleMessage(msg);
+});
+
+function handleMessage(msg) {
+  if (msg.type === 'SET_GAME_SERVER') {
+    return globalThis.nexusStorage.setActiveServer(msg.serverKey)
+      .then(server => ({ ok: true, server }))
+      .catch(error => ({ error: error.message }));
+  }
   if (msg.type === 'SCRAPE_NOW') return scrape().then(() => ({ ok: true }));
   if (msg.type === 'GET_FLEET') return getFleet(msg.planetId);
   if (msg.type === 'GET_SHIP_DEFS') return getShipDefs();
@@ -276,19 +294,20 @@ browser.runtime.onMessage.addListener(msg => {
   if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
   if (msg.type === 'SET_LIVE_SEARCH') return setLiveSearch(msg.config);
   if (msg.type === 'STOP_LIVE_SEARCH') return stopLiveSearch();
-});
+}
 
 // Launch a research on a planet: POST /api/research/{id}/start { planetId }.
 // (Endpoint mirrors the game client.) Refreshes stored state on success so the
 // dashboard reflects the new active research.
 async function startResearch(researchId, planetId, useFragments = false) {
-  const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
-  if (researchId == null || planetId == null) return { error: 'Missing research or planet id.' };
+  const server = await gameServer();
+  const token = await getToken(server);
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
+  if (researchId == null || planetId == null) return { error: '缺少研究或星球 ID。' };
   try {
     const body = { planetId };
     if (useFragments) body.useFragments = true;
-    const r = await fetch(`${GAME_URL}/api/research/${researchId}/start`, {
+    const r = await fetch(`${server.origin}/api/research/${researchId}/start`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -296,7 +315,7 @@ async function startResearch(researchId, planetId, useFragments = false) {
     if (!r.ok) {
       let m = `${r.status}`;
       try { const j = await r.json(); m = j.message || j.error || m; } catch { /* non-JSON */ }
-      return { error: `Start failed: ${m}` };
+      return { error: `启动失败：${m}` };
     }
     const data = await r.json().catch(() => ({}));
     await scrape();   // pick up the new active research
@@ -328,7 +347,7 @@ function findResearchLab(resp) {
 // and any in-progress lab upgrade end time.
 async function getResources() {
   const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
     const data = await apiFetch('/api/planets', token);
     const planets = data.planets || [];
@@ -351,7 +370,7 @@ async function getResources() {
       // Research speed is per-planet; actual time = nextResearchTime × this mult.
       try {
         const r = await apiFetch(`/api/research?planetId=${p.id}`, token);
-        researchPlanets.push({ id: p.id, name: p.name || `Planet #${p.id}`, mult: r.researchSpeedMult || 1 });
+        researchPlanets.push({ id: p.id, name: p.name || `星球 #${p.id}`, mult: r.researchSpeedMult || 1 });
       } catch { /* skip this planet's slot */ }
     }
     tot.labLevel = labLevel;
@@ -371,7 +390,7 @@ async function getResources() {
 // planets it scans.
 async function getAlliance() {
   const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
     const data = await apiFetch('/api/alliances/my', token);
     const a = data.alliance || {};
@@ -425,7 +444,7 @@ function jwtRace(token) {
 // trade), across every page.
 async function getOrders(path) {
   const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
     const first = await apiFetch(`${path}?page=1&limit=100`, token);
     const limit = first.pagination?.limit || 100;        // server may cap below 100
@@ -448,7 +467,7 @@ async function getOrders(path) {
 // Authenticated GET for dashboard pages (they have no cookie access of their own).
 async function apiGet(path) {
   const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
     return await apiFetch(path, token);
   } catch (err) {
@@ -461,9 +480,10 @@ async function apiGet(path) {
 // Find the nexus_token cookie. It can live outside the default store — a
 // Firefox container tab, a private window, or as a partitioned (CHIPS)
 // cookie — so fall back to searching every cookie store domain-wide.
-async function getToken() {
+async function getToken(server = null) {
+  server ||= await gameServer();
   const NAME = 'nexus_token';
-  const urls = [GAME_URL, 'https://nexuslegacy.space'];
+  const urls = [server.origin, 'https://nexuslegacy.space'];
 
   const lookup = async (storeId) => {
     const store = storeId ? { storeId } : {};
@@ -475,7 +495,12 @@ async function getToken() {
     }
     try {
       const all = await browser.cookies.getAll({ domain: 'nexuslegacy.space', name: NAME, ...store });
-      const hit = (all || []).find(c => c.value);
+      const matching = (all || []).filter(c => {
+        const domain = String(c.domain || '').replace(/^\./, '').toLowerCase();
+        return domain === server.hostname || domain === 'nexuslegacy.space';
+      });
+      const hit = matching.find(c => String(c.domain || '').replace(/^\./, '').toLowerCase() === server.hostname && c.value)
+        || matching.find(c => c.value);
       if (hit) return hit.value;
     } catch { /* ignore */ }
     return null;
@@ -497,7 +522,7 @@ async function getToken() {
   }
 
   console.warn(`[NexusAccounting] nexus_token not found. Checked default + stores: [${storeIds.join(', ')}]. ` +
-    `Open the game (logged in) in a normal tab, or check the cookie exists on s0.nexuslegacy.space.`);
+    `Open ${server.id} (logged in) in a normal tab, or check the cookie exists on ${server.hostname}.`);
   return null;
 }
 
@@ -529,13 +554,14 @@ async function rateLimitGate() {
   rlRemaining--;
 }
 
-async function apiFetch(path, token) {
+async function apiFetch(path, token, server = null) {
+  server ||= await gameServer();
   // Retry on 429 (rate limit), honouring Retry-After, then exponential backoff.
   for (let attempt = 0; ; attempt++) {
     await rateLimitGate();
     let r;
     try {
-      r = await fetch(`${GAME_URL}${path}`, {
+      r = await fetch(`${server.origin}${path}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch (e) {
@@ -554,13 +580,13 @@ async function apiFetch(path, token) {
 
 // Home planet id, discovered once via /api/planets and cached.
 async function getHomePlanetId(token) {
-  const { planet_id } = await browser.storage.local.get('planet_id');
+  const { planet_id } = await globalThis.nexusStorage.get('planet_id');
   if (planet_id) return planet_id;
   const data = await apiFetch('/api/planets', token);
   const planets = data.planets || [];
   const home = planets.find(p => p.isHomeworld) || planets[0];
-  if (!home) throw new Error('No planets found for this account');
-  await browser.storage.local.set({ planet_id: home.id });
+  if (!home) throw new Error('该账号下未找到星球');
+  await globalThis.nexusStorage.set({ planet_id: home.id });
   console.log(`[NexusAccounting] Home planet: ${home.name} (#${home.id})`);
   return home.id;
 }
@@ -626,12 +652,12 @@ async function apiMissionFuel(m) {
 // Current stationed fleet as { shipKey: usableQuantity } — for the simulator.
 async function getPlanets() {
   const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
     const data = await apiFetch('/api/planets', token);
     const planets = (data.planets || []).map(p => ({
       id: p.id,
-      name: p.name || `Planet ${p.id}`,
+      name: p.name || `星球 ${p.id}`,
       isHomeworld: !!p.isHomeworld,
       systemId: p.systemId ?? p.system?.id ?? null,
       systemName: p.systemName || null,
@@ -644,7 +670,7 @@ async function getPlanets() {
 
 async function getFleet(planetId) {
   const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
     let targets;
     if (planetId === 'all') {
@@ -672,18 +698,19 @@ async function getFleet(planetId) {
 // can include combat escorts you don't currently field. Raw shipDefId (= the
 // shipyard ship id) is what the mine endpoint needs.
 async function getShipDefs() {
-  const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
+  const server = await gameServer();
+  const token = await getToken(server);
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
     const planetId = await getHomePlanetId(token);
-    const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token);
+    const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token, server);
     const race = jwtRace(token);
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,
       key: s.key || '',
       name: s.name || `#${s.id}`,
       cargoCapacity: s.cargoCapacity || 0,
-      imageUrl: (race && s.key) ? `https://s0.nexuslegacy.space/api/images/ships/${race}/${s.key}.webp` : null,
+      imageUrl: (race && s.key) ? `${server.origin}/api/images/ships/${race}/${s.key}.webp` : null,
       shipClass: s.shipClass || '',
       miningCargo: s.miningCargoCapacity || 0,
       sortOrder: s.sortOrder || 0,
@@ -702,8 +729,8 @@ async function getShipDefs() {
 // Ships actually available on one planet, as { shipDefId: undamagedQuantity }.
 async function getPlanetShips(planetId) {
   const token = await getToken();
-  if (!token) return { error: 'Not logged in to Nexus Legacy.' };
-  if (planetId == null) return { error: 'No planet selected.' };
+  if (!token) return { error: '尚未登录 Nexus Legacy。' };
+  if (planetId == null) return { error: '尚未选择星球。' };
   try {
     const data = await apiFetch(`/api/planets/${planetId}/fleet`, token);
     const available = {};
@@ -738,12 +765,13 @@ async function fuelEstimateGate() {
 // identical to the game's own call. A Bearer request straight from the
 // extension is rejected by the server (500).
 async function gamePost(path, body) {
-  if (!(body.ships || []).length) return { error: 'No ships selected.' };
+  if (!(body.ships || []).length) return { error: '尚未选择舰船。' };
   if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
-  const token = await getToken();
+  const server = await gameServer();
+  const token = await getToken(server);
   try {
-    const tabs = await browser.tabs.query({ url: 'https://s0.nexuslegacy.space/*' });
-    if (!tabs.length) return { error: 'Open the Nexus Legacy game in a tab first.' };
+    const tabs = await browser.tabs.query({ url: `${server.origin}/*` });
+    if (!tabs.length) return { error: `请先在标签页中打开 ${server.name}（${server.id}）。` };
     // Retry on 429, honouring Retry-After, then exponential backoff — same policy as apiFetch.
     for (let attempt = 0; ; attempt++) {
       const r = await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
@@ -768,7 +796,7 @@ let processing = Promise.resolve();
 function enqueue(fn) {
   processing = processing.then(fn).catch(async err => {
     console.error('[NexusAccounting] Processing failed:', err);
-    await browser.storage.local.set({ last_error: err.message });
+    await globalThis.nexusStorage.set({ last_error: err.message });
   });
   return processing;
 }
@@ -784,7 +812,7 @@ const ARCHIVE_TYPES = ['survey', 'pirate', 'mining', 'exp', 'xeno'];
 // added after the index was first written, like 'xeno') so every caller can
 // assume idx[type] exists without checking.
 async function getArchiveIndex() {
-  const { archive_index } = await browser.storage.local.get('archive_index');
+  const { archive_index } = await globalThis.nexusStorage.get('archive_index');
   const idx = archive_index || {};
   for (const t of ARCHIVE_TYPES) if (!idx[t]) idx[t] = { months: [], count: 0 };
   return idx;
@@ -800,20 +828,20 @@ async function appendToArchive(type, records) {
   }
   for (const [m, recs] of Object.entries(byMonth)) {
     const key = `${type}_archive_${m}`;
-    const cur = (await browser.storage.local.get(key))[key] || [];
-    await browser.storage.local.set({ [key]: [...recs, ...cur] });
+    const cur = (await globalThis.nexusStorage.get(key))[key] || [];
+    await globalThis.nexusStorage.set({ [key]: [...recs, ...cur] });
     if (!index[type].months.includes(m)) index[type].months.push(m);
     index[type].count += recs.length;
   }
   index[type].months.sort();
-  await browser.storage.local.set({ archive_index: index });
+  await globalThis.nexusStorage.set({ archive_index: index });
 }
 
 async function loadArchive(type) {
   const index = await getArchiveIndex();
   const keys = index[type].months.map(m => `${type}_archive_${m}`);
   if (!keys.length) return [];
-  const got = await browser.storage.local.get(keys);
+  const got = await globalThis.nexusStorage.get(keys);
   const out = [];
   for (const k of keys) out.push(...(got[k] || []));
   return out;
@@ -832,7 +860,7 @@ async function purgeOldData(days = 3) {
   for (const type of ARCHIVE_TYPES) {
     const months = index[type].months || [];
     const keys = months.map(m => `${type}_archive_${m}`);
-    const got = keys.length ? await browser.storage.local.get(keys) : {};
+    const got = keys.length ? await globalThis.nexusStorage.get(keys) : {};
     const keptMonths = [];
     let count = 0;
     for (const m of months) {
@@ -845,10 +873,10 @@ async function purgeOldData(days = 3) {
   }
   patch.archive_index = index;
   const recentKeys = ['recent_reports', 'pirate_recent_reports', 'mining_recent_reports', 'exp_recent_reports'];
-  const recents = await browser.storage.local.get(recentKeys);
+  const recents = await globalThis.nexusStorage.get(recentKeys);
   for (const k of recentKeys) if (Array.isArray(recents[k])) patch[k] = recents[k].filter(keep);
-  await browser.storage.local.set(patch);
-  if (remove.length) await browser.storage.local.remove(remove);
+  await globalThis.nexusStorage.set(patch);
+  if (remove.length) await globalThis.nexusStorage.remove(remove);
   await rebuildAggregates();
   return { ok: true };
 }
@@ -925,7 +953,7 @@ const ZONE_REFRESH_MS = 24 * 3600 * 1000;
 
 async function getSystemZones(token) {
   const { system_zones, system_zones_at, system_coords_by_id } =
-    await browser.storage.local.get(['system_zones', 'system_zones_at', 'system_coords_by_id']);
+    await globalThis.nexusStorage.get(['system_zones', 'system_zones_at', 'system_coords_by_id']);
   if (system_zones && system_zones_at && system_coords_by_id && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
     return system_zones;
   }
@@ -945,7 +973,7 @@ async function getSystemZones(token) {
         if (s.name) coordsByName[s.name] = { x: s.x, y: s.y };
       }
     }
-    await browser.storage.local.set({
+    await globalThis.nexusStorage.set({
       system_zones: map, system_zone_by_id: byId, system_zones_at: Date.now(),
       system_coords_by_id: coordsById, system_coords_by_name: coordsByName,
     });
@@ -957,7 +985,7 @@ async function getSystemZones(token) {
 
 async function getSystemCoords(names, ids) {
   const { system_coords_by_id, system_coords_by_name } =
-    await browser.storage.local.get(['system_coords_by_id', 'system_coords_by_name']);
+    await globalThis.nexusStorage.get(['system_coords_by_id', 'system_coords_by_name']);
   const byId = system_coords_by_id || {};
   const byName = system_coords_by_name || {};
   const result = {};
@@ -986,15 +1014,15 @@ async function getCampZones(token, zones) {
   try {
     camps = (await apiFetch(PIRATE_CAMPS_PATH, token)).camps || [];
   } catch {
-    const { camp_zones } = await browser.storage.local.get('camp_zones');
+    const { camp_zones } = await globalThis.nexusStorage.get('camp_zones');
     return camp_zones || {};
   }
-  const { camp_zones } = await browser.storage.local.get('camp_zones');
+  const { camp_zones } = await globalThis.nexusStorage.get('camp_zones');
   const map = { ...(camp_zones || {}) };   // keep camps that have since despawned
   for (const c of camps) {
     if (c.id != null) map[c.id] = resolveZone(c.systemName, zones);
   }
-  await browser.storage.local.set({ camp_zones: map });
+  await globalThis.nexusStorage.set({ camp_zones: map });
   return map;
 }
 
@@ -1005,10 +1033,10 @@ async function getWormholeZones(token, zones) {
   try {
     holes = (await apiFetch(WORMHOLES_PATH, token)).wormholes || [];
   } catch {
-    const { wormhole_zones } = await browser.storage.local.get('wormhole_zones');
+    const { wormhole_zones } = await globalThis.nexusStorage.get('wormhole_zones');
     return wormhole_zones || {};
   }
-  const got = await browser.storage.local.get(['wormhole_zones', 'wormhole_classes']);
+  const got = await globalThis.nexusStorage.get(['wormhole_zones', 'wormhole_classes']);
   const map = { ...(got.wormhole_zones || {}) };       // keep wormholes that have closed
   const classes = { ...(got.wormhole_classes || {}) };
   for (const w of holes) {
@@ -1016,7 +1044,7 @@ async function getWormholeZones(token, zones) {
     map[w.id] = resolveZone(w.systemName, zones);
     if (w.wormholeClass) classes[w.id] = w.wormholeClass;
   }
-  await browser.storage.local.set({ wormhole_zones: map, wormhole_classes: classes });
+  await globalThis.nexusStorage.set({ wormhole_zones: map, wormhole_classes: classes });
   return map;
 }
 
@@ -1025,7 +1053,7 @@ async function getWormholeZones(token, zones) {
 // as 'unknown' and zone filtering shows nothing for real zones. seen_ids
 // blocks re-ingestion, so the records must be patched in place.
 async function backfillZones(zones, campZones = {}, wormholeZones = {}) {
-  const { zones_backfilled } = await browser.storage.local.get('zones_backfilled');
+  const { zones_backfilled } = await globalThis.nexusStorage.get('zones_backfilled');
   if (zones_backfilled) return;
 
   const recentKey = {
@@ -1047,11 +1075,11 @@ async function backfillZones(zones, campZones = {}, wormholeZones = {}) {
   for (const type of ARCHIVE_TYPES) {
     const keys = [recentKey[type], ...idx[type].months.map(m => `${type}_archive_${m}`)];
     for (const key of keys) {
-      const got = await browser.storage.local.get(key);
-      if (got[key]) await browser.storage.local.set({ [key]: got[key].map(r => stamp(r, type)) });
+      const got = await globalThis.nexusStorage.get(key);
+      if (got[key]) await globalThis.nexusStorage.set({ [key]: got[key].map(r => stamp(r, type)) });
     }
   }
-  await browser.storage.local.set({ zones_backfilled: true });
+  await globalThis.nexusStorage.set({ zones_backfilled: true });
   console.log('[NexusAccounting] Zone back-fill complete.');
 }
 
@@ -1096,7 +1124,7 @@ function extrasOf(loot) {
 }
 
 async function processSurveyReports(reports, ships, zones = {}) {
-  const stored = await browser.storage.local.get([
+  const stored = await globalThis.nexusStorage.get([
     'seen_ids', 'totals', 'daily', 'hourly', 'resources_lost',
     'event_breakdown', 'recent_reports', 'records_cap',
   ]);
@@ -1226,7 +1254,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
   const addedSurveys = recentReports.length - (stored.recent_reports || []).length;
   await appendToArchive('survey', recentReports.slice(0, addedSurveys));
 
-  await browser.storage.local.set({
+  await globalThis.nexusStorage.set({
     seen_ids: [...seenIds],
     totals,
     daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
@@ -1243,7 +1271,7 @@ async function processSurveyReports(reports, ships, zones = {}) {
 }
 
 async function processPirateReports(pirateReports, ships, campZones = {}) {
-  const pstored = await browser.storage.local.get([
+  const pstored = await globalThis.nexusStorage.get([
     'pirate_seen_ids', 'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
     'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports', 'records_cap',
   ]);
@@ -1371,7 +1399,7 @@ async function processPirateReports(pirateReports, ships, campZones = {}) {
 
   await appendToArchive('pirate', pirateRecent.slice(0, pirateRecent.length - (pstored.pirate_recent_reports || []).length));
 
-  await browser.storage.local.set({
+  await globalThis.nexusStorage.set({
     pirate_seen_ids: [...pirateSeen],
     pirate_totals: pirateTotals,
     pirate_daily: Object.values(pirateDailyMap).sort((a, b) => a.day.localeCompare(b.day)),
@@ -1401,7 +1429,7 @@ function extractFleet(arr) {
 // Spy reports → defender intel for the simulator (latest INTEL_KEEP kept).
 async function processSpyReports(reports) {
   if (!reports.length) return 0;
-  const { spy_reports } = await browser.storage.local.get('spy_reports');
+  const { spy_reports } = await globalThis.nexusStorage.get('spy_reports');
   const byId = {};
   for (const r of (spy_reports || [])) byId[r.id] = r;
   for (const r of reports) {
@@ -1422,14 +1450,14 @@ async function processSpyReports(reports) {
   const merged = Object.values(byId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
     .slice(0, INTEL_KEEP);
-  await browser.storage.local.set({ spy_reports: merged });
+  await globalThis.nexusStorage.set({ spy_reports: merged });
   return merged.length;
 }
 
 // Camp scout reports → pirate camp intel (shape unseen so far — parsed tolerantly).
 async function processCampScoutReports(reports) {
   if (!reports.length) return 0;
-  const { camp_scout_reports } = await browser.storage.local.get('camp_scout_reports');
+  const { camp_scout_reports } = await globalThis.nexusStorage.get('camp_scout_reports');
   const byId = {};
   for (const r of (camp_scout_reports || [])) byId[r.id] = r;
   for (const r of reports) {
@@ -1446,7 +1474,7 @@ async function processCampScoutReports(reports) {
   const merged = Object.values(byId)
     .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
     .slice(0, INTEL_KEEP);
-  await browser.storage.local.set({ camp_scout_reports: merged });
+  await globalThis.nexusStorage.set({ camp_scout_reports: merged });
   return merged.length;
 }
 
@@ -1553,7 +1581,7 @@ function addResources(target, res) {
 // shipDefId + no build cost → excluded), opponent, both fleets, the round log, the
 // debris field, and the loot (gained if we attacked, lost if we defended).
 async function processPvpReports(reports) {
-  const stored = await browser.storage.local.get(['pvp_seen_ids', 'pvp_recent_reports', 'records_cap']);
+  const stored = await globalThis.nexusStorage.get(['pvp_seen_ids', 'pvp_recent_reports', 'records_cap']);
   const cap = stored.records_cap ?? 5000;
   const seen = new Set(stored.pvp_seen_ids || []);
   const recent = [...(stored.pvp_recent_reports || [])];
@@ -1615,7 +1643,7 @@ async function processPvpReports(reports) {
     n++;
   }
   recent.length = Math.min(recent.length, cap);
-  await browser.storage.local.set({
+  await globalThis.nexusStorage.set({
     pvp_seen_ids: [...seen].slice(-20000),
     pvp_recent_reports: recent,
   });
@@ -1623,7 +1651,7 @@ async function processPvpReports(reports) {
 }
 
 async function processMiningReports(reports, ships, zones = {}) {
-  const stored = await browser.storage.local.get([
+  const stored = await globalThis.nexusStorage.get([
     'mining_seen_ids', 'mining_totals', 'mining_daily', 'mining_resources_lost',
     'mining_recent_reports', 'records_cap',
   ]);
@@ -1733,7 +1761,7 @@ async function processMiningReports(reports, ships, zones = {}) {
 
   await appendToArchive('mining', recent.slice(0, recent.length - (stored.mining_recent_reports || []).length));
 
-  await browser.storage.local.set({
+  await globalThis.nexusStorage.set({
     mining_seen_ids: [...seen],
     mining_totals: totals,
     mining_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
@@ -1768,7 +1796,7 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
   ];
   if (!items.length) return 0;
 
-  const stored = await browser.storage.local.get([
+  const stored = await globalThis.nexusStorage.get([
     'exp_seen_ids', 'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
     'expedition_resources_lost', 'wormhole_resources_lost', 'records_cap',
   ]);
@@ -1849,7 +1877,7 @@ async function processExpeditionReports(reports, runs, ships, zones = {}, wormho
 
   if (added || patched) {
     await appendToArchive('exp', recent.slice(0, recent.length - (stored.exp_recent_reports || []).length));
-    await browser.storage.local.set({
+    await globalThis.nexusStorage.set({
       exp_seen_ids: [...seen],
       exp_totals: totals,
       expedition_totals: expTotals,
@@ -1889,7 +1917,7 @@ async function processXenoReports(messages) {
   const xenoMsgs = (messages || []).filter(m => m.subject === 'Xeno Survey Complete');
   if (!xenoMsgs.length) return 0;
 
-  const stored = await browser.storage.local.get([
+  const stored = await globalThis.nexusStorage.get([
     'xeno_seen_ids', 'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'records_cap',
   ]);
   const recordsCap = stored.records_cap ?? 5000;
@@ -1931,7 +1959,7 @@ async function processXenoReports(messages) {
 
   if (added) {
     await appendToArchive('xeno', recent.slice(0, recent.length - (stored.xeno_recent_reports || []).length));
-    await browser.storage.local.set({
+    await globalThis.nexusStorage.set({
       xeno_seen_ids: [...seen],
       xeno_totals: totals,
       xeno_daily: Object.values(dailyMap).sort((a, b) => a.day.localeCompare(b.day)),
@@ -1947,7 +1975,7 @@ async function processXenoReports(messages) {
 // "Live debris fields" table. Precise collection is tracked separately from
 // returning collect_debris missions (processMissions).
 async function processSystemDebris(debrisArr, zones = {}) {
-  const stored = await browser.storage.local.get('debris_fields');
+  const stored = await globalThis.nexusStorage.get('debris_fields');
   const prev = {};
   for (const f of (stored.debris_fields || [])) prev[f.id] = f;
 
@@ -1969,7 +1997,7 @@ async function processSystemDebris(debrisArr, zones = {}) {
     };
   }
 
-  await browser.storage.local.set({
+  await globalThis.nexusStorage.set({
     debris_fields: Object.values(next),
     debris_last_check: now,
   });
@@ -1985,7 +2013,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
   // miss the second; counting per mission catches every trip).
   if (missions && missions.length) {
     const { fuel_log, fuel_counted_ids } =
-      await browser.storage.local.get(['fuel_log', 'fuel_counted_ids']);
+      await globalThis.nexusStorage.get(['fuel_log', 'fuel_counted_ids']);
     const counted = new Set(fuel_counted_ids || []);
     const flog = [...(fuel_log || [])];
     for (const m of missions) {
@@ -2006,7 +2034,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
       });
     }
     const countedArr = [...counted];
-    await browser.storage.local.set({
+    await globalThis.nexusStorage.set({
       fuel_log: flog.slice(0, 4000),
       fuel_counted_ids: countedArr.slice(Math.max(0, countedArr.length - 5000)),
     });
@@ -2014,7 +2042,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
 
   const runs = (missions || []).filter(m => m.missionType === 'collect_debris');
 
-  const stored = await browser.storage.local.get([
+  const stored = await globalThis.nexusStorage.get([
     'debris_collected', 'debris_collection_log', 'debris_collection_ids',
     'debris_resources_lost', 'debris_loss_ids', 'records_cap',
   ]);
@@ -2072,7 +2100,7 @@ async function processMissions(missions, zoneById = {}, ships = {}) {
     }
   }
 
-  await browser.storage.local.set({
+  await globalThis.nexusStorage.set({
     debris_active_runs: active,
     debris_collected: total,
     debris_collection_log: log.slice(0, recordsCap),
@@ -2096,7 +2124,7 @@ function costFromDetail(record, ships, into) {
 }
 
 async function rebuildAggregates() {
-  const s = await browser.storage.local.get([
+  const s = await globalThis.nexusStorage.get([
     'recent_reports', 'pirate_recent_reports', 'mining_recent_reports',
     'exp_recent_reports', 'xeno_recent_reports', 'ships',
   ]);
@@ -2313,24 +2341,26 @@ async function rebuildAggregates() {
     out.xeno_daily = Object.values(daily).sort((a, b) => a.day.localeCompare(b.day));
   }
 
-  await browser.storage.local.set(out);
-  await browser.storage.local.remove('stats_drift');
+  await globalThis.nexusStorage.set(out);
+  await globalThis.nexusStorage.remove('stats_drift');
   console.log('[NexusAccounting] Aggregates rebuilt from stored records.');
 }
 
 // ── Backups ─────────────────────────────────────────────────────────────────
-// Full storage snapshots written to Downloads/NexusAccounting/: weekly while
+// Selected-server storage snapshots written to Downloads/NexusAccounting/: weekly while
 // scraping runs, and before every destructive operation (reset, import,
 // schema-fallback wipe). Same format as the manual dashboard export.
 
 const BACKUP_INTERVAL_MS = 7 * 24 * 3600 * 1000;
 
 async function backupToDownloads(reason) {
-  const data = await browser.storage.local.get(null);
+  const server = await gameServer();
+  const data = await globalThis.nexusStorage.get(null);
   if (data.records_cap === Infinity) data.records_cap = 0;
   const payload = {
     nexus_accounting_backup: 1,
     exported_at: new Date().toISOString(),
+    server_key: server.key,
     reason,
     data,
   };
@@ -2339,16 +2369,16 @@ async function backupToDownloads(reason) {
   const url = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload));
   await browser.downloads.download({
     url,
-    filename: `NexusAccounting/nexus-accounting-${reason}-${new Date().toISOString().slice(0, 10)}.json`,
+    filename: `NexusAccounting/nexus-accounting-${server.key}-${reason}-${new Date().toISOString().slice(0, 10)}.json`,
     conflictAction: 'uniquify',
     saveAs: false,
   });
-  await browser.storage.local.set({ last_backup: new Date().toISOString() });
+  await globalThis.nexusStorage.set({ last_backup: new Date().toISOString() });
   console.log(`[NexusAccounting] Backup written (${reason}).`);
 }
 
 async function maybeAutoBackup() {
-  const { last_backup } = await browser.storage.local.get('last_backup');
+  const { last_backup } = await globalThis.nexusStorage.get('last_backup');
   if (last_backup && Date.now() - new Date(last_backup).getTime() < BACKUP_INTERVAL_MS) return;
   try {
     await backupToDownloads('auto');
@@ -2363,7 +2393,7 @@ async function maybeAutoBackup() {
 // legitimate rebuild never reports drift.
 
 async function checkDrift() {
-  const s = await browser.storage.local.get([
+  const s = await globalThis.nexusStorage.get([
     'totals', 'pirate_totals', 'mining_totals', 'exp_totals',
   ]);
   const surveyArchive = await loadArchive('survey');
@@ -2400,12 +2430,12 @@ async function checkDrift() {
   }
 
   if (problems.length) {
-    await browser.storage.local.set({
+    await globalThis.nexusStorage.set({
       stats_drift: { detected_at: new Date().toISOString(), fields: problems },
     });
     console.warn('[NexusAccounting] Stats drift detected:', problems.join(', '));
   } else {
-    await browser.storage.local.remove('stats_drift');
+    await globalThis.nexusStorage.remove('stats_drift');
   }
 }
 
@@ -2428,9 +2458,9 @@ const MIGRATIONS = {
       exp: ['exp_archive', 'exp_recent_reports'],
     };
     for (const [type, [legacy, fallback]] of Object.entries(legacyKeys)) {
-      const s = await browser.storage.local.get([legacy, fallback]);
+      const s = await globalThis.nexusStorage.get([legacy, fallback]);
       await appendToArchive(type, s[legacy] || s[fallback] || []);
-      await browser.storage.local.remove(legacy);
+      await globalThis.nexusStorage.remove(legacy);
     }
   },
   // v5: the wormhole/expedition parser was broken (loot lives in `totalLoot`,
@@ -2439,12 +2469,12 @@ const MIGRATIONS = {
   5: async () => {
     const idx = await getArchiveIndex();
     const shardKeys = (idx.exp?.months || []).map(m => `exp_archive_${m}`);
-    await browser.storage.local.remove([
+    await globalThis.nexusStorage.remove([
       ...shardKeys, 'exp_seen_ids', 'exp_totals', 'exp_daily', 'exp_recent_reports',
     ]);
     if (idx.exp) {
       idx.exp = { months: [], count: 0 };
-      await browser.storage.local.set({ archive_index: idx });
+      await globalThis.nexusStorage.set({ archive_index: idx });
     }
   },
   // v6: resources_lost split into { destroyed, repair }. Rebuild recomputes the
@@ -2457,7 +2487,7 @@ const MIGRATIONS = {
   // stale coords caches; system_coords_by_id/_by_name get re-populated by
   // getSystemZones() on the next galaxy map refresh, the rest rebuild from new launches.
   7: async () => {
-    await browser.storage.local.remove([
+    await globalThis.nexusStorage.remove([
       'fuel_log', 'fuel_counted_ids', 'mission_origins',
       'system_coords_by_id', 'system_coords_by_name', 'camp_coords',
       'home_system_id', 'owned_system_ids',
@@ -2466,14 +2496,14 @@ const MIGRATIONS = {
   // v8: PvP battle records added; early ones were list-only (no fleets/rounds/
   // debris/defenses). Clear them so they re-ingest from the detail endpoint.
   8: async () => {
-    await browser.storage.local.remove(['pvp_seen_ids', 'pvp_recent_reports']);
+    await globalThis.nexusStorage.remove(['pvp_seen_ids', 'pvp_recent_reports']);
   },
   // v9: exp_resources_lost (combined expedition+wormhole ship-loss cost) split
   // into expedition_resources_lost/wormhole_resources_lost, per-kind — real
   // expedition events (pirate_ambush, fleet_lost) destroy ships too, not just
   // wormhole encounters. Rebuild recomputes both from the archives.
   9: async () => {
-    await browser.storage.local.remove('exp_resources_lost');
+    await globalThis.nexusStorage.remove('exp_resources_lost');
     await rebuildAggregates();
   },
   // v10: expedition_totals/wormhole_totals (per-kind gain totals, for the
@@ -2485,7 +2515,7 @@ const MIGRATIONS = {
 };
 
 async function ensureSchema() {
-  const { schema_version } = await browser.storage.local.get('schema_version');
+  const { schema_version } = await globalThis.nexusStorage.get('schema_version');
   const from = schema_version ?? 0;
   if (from >= SCHEMA_VERSION) return;
 
@@ -2501,13 +2531,13 @@ async function ensureSchema() {
       } catch (err) {
         console.warn('[NexusAccounting] Pre-wipe backup failed:', err);
       }
-      const { records_cap } = await browser.storage.local.get('records_cap');
-      await browser.storage.local.clear();
-      if (records_cap !== undefined) await browser.storage.local.set({ records_cap });
+      const { records_cap } = await globalThis.nexusStorage.get('records_cap');
+      await globalThis.nexusStorage.clear();
+      if (records_cap !== undefined) await globalThis.nexusStorage.set({ records_cap });
       break;
     }
   }
-  await browser.storage.local.set({ schema_version: SCHEMA_VERSION });
+  await globalThis.nexusStorage.set({ schema_version: SCHEMA_VERSION });
 }
 
 // ── Full scrape (15-min alarm fallback + manual button) ────────────────────
@@ -2516,7 +2546,7 @@ async function scrape() {
   const token = await getToken();
   if (!token) {
     console.warn('[NexusAccounting] No token — log in to the game first.');
-    await browser.storage.local.set({ last_error: 'Not logged in to Nexus Legacy.' });
+    await globalThis.nexusStorage.set({ last_error: '尚未登录 Nexus Legacy。' });
     return;
   }
 
@@ -2547,7 +2577,7 @@ async function scrape() {
       getWormholeZones(token, zones),
     ]);
     const { wormhole_classes: wormholeClasses, system_zone_by_id: zoneById } =
-      await browser.storage.local.get(['wormhole_classes', 'system_zone_by_id']);
+      await globalThis.nexusStorage.get(['wormhole_classes', 'system_zone_by_id']);
 
     await enqueue(async () => {
       // Shipyard can 403 (e.g. ships on patrol) — reuse the last-known catalog so
@@ -2555,9 +2585,9 @@ async function scrape() {
       let ships;
       if (shipyardData) {
         ships = buildShipCatalog(shipyardData);
-        await browser.storage.local.set({ ships });
+        await globalThis.nexusStorage.set({ ships });
       } else {
-        ships = (await browser.storage.local.get('ships')).ships || {};
+        ships = (await globalThis.nexusStorage.get('ships')).ships || {};
       }
       await backfillZones(zones, campZones, wormholeZones);
       const nSurveys = await processSurveyReports(reportData.reports || [], ships, zones);
@@ -2567,7 +2597,7 @@ async function scrape() {
       await processXenoReports(xenoMessagesData.notifications || []);
       await processSystemDebris(systemDebrisData.debris || [], zones);
       await processMissions(missionsData.missions || [], zoneById || {}, ships);
-      await browser.storage.local.set({
+      await globalThis.nexusStorage.set({
         research: researchData.research || [],
         research_speed_mult: researchData.researchSpeedMult || 1,
         active_research: researchData.activeResearches || (researchData.activeResearch ? [researchData.activeResearch] : []),
@@ -2582,8 +2612,8 @@ async function scrape() {
   } catch (err) {
     console.error('[NexusAccounting] Scrape failed:', err);
     // Cached planet may be gone (recolonized) — rediscover on next scrape.
-    if (err.message.includes('→ 404')) await browser.storage.local.remove('planet_id');
-    await browser.storage.local.set({ last_error: err.message });
+    if (err.message.includes('→ 404')) await globalThis.nexusStorage.remove('planet_id');
+    await globalThis.nexusStorage.set({ last_error: err.message });
   }
 }
 
@@ -2595,21 +2625,23 @@ async function scrape() {
 // per change. Still near-realtime — the dashboard updates seconds after you
 // open a report in game.
 
-const WATCHED_URLS = [
-  `${GAME_URL}/api/fleet/survey-reports*`,
-  `${GAME_URL}/api/fleet/pirate-reports*`,
-  `${GAME_URL}/api/fleet/reports*`,   // PvP combat reports
-  `${GAME_URL}/api/fleet/spy-reports*`,
-  `${GAME_URL}/api/fleet/camp-scout-reports*`,
-  `${GAME_URL}/api/fleet/mining-reports*`,
-  `${GAME_URL}/api/fleet/expedition-reports*`,
-  `${GAME_URL}/api/fleet/wormhole-runs*`,
-  `${GAME_URL}/api/messages/system*`,
-  `${GAME_URL}/api/fleet/system-debris*`,
-  `${GAME_URL}/api/fleet/missions*`,
-  `${GAME_URL}/api/research*`,
-  `${GAME_URL}/api/planets/*/shipyard*`,
+const WATCHED_PATHS = [
+  '/api/fleet/survey-reports*',
+  '/api/fleet/pirate-reports*',
+  '/api/fleet/reports*',   // PvP combat reports
+  '/api/fleet/spy-reports*',
+  '/api/fleet/camp-scout-reports*',
+  '/api/fleet/mining-reports*',
+  '/api/fleet/expedition-reports*',
+  '/api/fleet/wormhole-runs*',
+  '/api/messages/system*',
+  '/api/fleet/system-debris*',
+  '/api/fleet/missions*',
+  '/api/research*',
+  '/api/planets/*/shipyard*',
 ];
+const WATCHED_URLS = Object.values(globalThis.nexusStorage.servers)
+  .flatMap(server => WATCHED_PATHS.map(path => `${server.origin}${path}`));
 
 // Best-effort debounce so a burst of game calls to the same endpoint triggers
 // one re-fetch. Module scope resets if the service worker sleeps, which only
@@ -2621,30 +2653,38 @@ browser.webRequest.onCompleted.addListener(
     if (details.tabId === -1) return;                       // our own re-fetches
     if (details.statusCode < 200 || details.statusCode >= 300) return;
     const path = new URL(details.url).pathname;
-    if (refetchPending.has(path)) return;
-    refetchPending.add(path);
-    setTimeout(() => refetchPending.delete(path), 3000);
-    refetchEndpoint(path);
+    const server = globalThis.nexusStorage.serverFromUrl(details.url);
+    if (!server) return;
+    void gameServer().then(active => {
+      // The dashboard selector is authoritative. Ignore passive traffic from
+      // another open universe rather than switching contexts mid-scrape.
+      if (active.key !== server.key) return;
+      const pendingKey = `${server.key}:${path}`;
+      if (refetchPending.has(pendingKey)) return;
+      refetchPending.add(pendingKey);
+      setTimeout(() => refetchPending.delete(pendingKey), 3000);
+      refetchEndpoint(path, server);
+    });
   },
   { urls: WATCHED_URLS }
 );
 
-async function refetchEndpoint(path) {
-  const token = await getToken();
+async function refetchEndpoint(path, server) {
+  const token = await getToken(server);
   if (!token) return;
   let json;
   try {
-    json = await apiFetch(path, token);
+    json = await apiFetch(path, token, server);
   } catch {
     return;
   }
-  routeIntercepted(GAME_URL + path, json);
+  routeIntercepted(server.origin + path, json);
 }
 
 function routeIntercepted(url, json) {
   enqueue(async () => {
     if (url.includes('/shipyard')) {
-      await browser.storage.local.set({ ships: buildShipCatalog(json) });
+      await globalThis.nexusStorage.set({ ships: buildShipCatalog(json) });
       return;
     }
     if (url.includes('/spy-reports')) {
@@ -2664,17 +2704,17 @@ function routeIntercepted(url, json) {
       return;
     }
     if (url.includes('/system-debris')) {
-      const { system_zones } = await browser.storage.local.get('system_zones');
+      const { system_zones } = await globalThis.nexusStorage.get('system_zones');
       await processSystemDebris(json.debris || [], system_zones || {});
       return;
     }
     if (url.includes('/missions')) {
-      const { system_zone_by_id, ships } = await browser.storage.local.get(['system_zone_by_id', 'ships']);
+      const { system_zone_by_id, ships } = await globalThis.nexusStorage.get(['system_zone_by_id', 'ships']);
       await processMissions(json.missions || [], system_zone_by_id || {}, ships || {});
       return;
     }
     if (url.includes('/api/research')) {
-      await browser.storage.local.set({
+      await globalThis.nexusStorage.set({
         research: json.research || [],
         research_speed_mult: json.researchSpeedMult || 1,
         active_research: json.activeResearches || (json.activeResearch ? [json.activeResearch] : []),
@@ -2682,7 +2722,7 @@ function routeIntercepted(url, json) {
       return;
     }
     const { ships, system_zones, camp_zones, wormhole_zones, wormhole_classes } =
-      await browser.storage.local.get(['ships', 'system_zones', 'camp_zones', 'wormhole_zones', 'wormhole_classes']);
+      await globalThis.nexusStorage.get(['ships', 'system_zones', 'camp_zones', 'wormhole_zones', 'wormhole_classes']);
     if (!ships) return; // no catalog yet — the next full scrape bootstraps it
     const zones = system_zones || {};
     const wz = wormhole_zones || {};

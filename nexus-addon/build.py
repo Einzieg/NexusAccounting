@@ -26,7 +26,7 @@ FILES = [
     'manifest.json',
     'package.json',
     'CHANGELOG.md',
-    'background-sw.js', 'background.js', 'sidebar-inject.js',
+    'background-sw.js', 'background.js', 'server-storage.js', 'sidebar-inject.js',
     'galaxy-fetch-hook.js', 'galaxy-fields.js', 'empire-view.js', 'guide-view.js', 'logistics-view.js', 'upgrade-queue.js', 'building-upgrade.js', 'tech-upgrade.js', 'ship-upgrade.js',
     'dashboard.html', 'dashboard.css', 'dashboard.js', 'common.js',
     'tabs/global.js', 'tabs/surveys.js', 'tabs/pirates.js', 'tabs/mining.js',
@@ -39,7 +39,7 @@ FILES = [
 
 
 def read_version():
-    with open(os.path.join(HERE, 'manifest.json')) as f:
+    with open(os.path.join(HERE, 'manifest.json'), encoding='utf-8') as f:
         return json.load(f)['version']
 
 
@@ -68,7 +68,7 @@ def load_env():
     path = os.path.join(ROOT, '.env')
     if not os.path.exists(path):
         return
-    with open(path) as f:
+    with open(path, encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:

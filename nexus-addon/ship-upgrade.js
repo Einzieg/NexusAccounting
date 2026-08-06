@@ -28,7 +28,10 @@ const BASE_RES = [
   { field: 'costAlloys',    cargo: 'alloys' },
 ];
 const fmt = n => Math.round(n || 0).toLocaleString();
-const labelOf = cargo => cargo.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const RES_LABELS = { ore: '矿石', silicates: '硅酸盐', hydrogen: '氢', alloys: '合金',
+  cryo_ice: '低温冰', quantum_dust: '量子尘', plasma_core: '等离子核心',
+  bio_extract: '生物提取物', dark_matter: '暗物质', antimatter: '反物质' };
+const labelOf = cargo => RES_LABELS[cargo] || cargo.replace(/_/g, ' ');
 
 // The planet currently in view, learned from the page's own /api/planets/{id}
 // GET (relayed by galaxy-fetch-hook.js, MAIN world). Ask for a replay on load in
@@ -109,11 +112,11 @@ async function openPlanner(shipKey) {
 
   const title = document.createElement('h2');
   title.style.cssText = 'margin:0 0 12px; font-size:1.2rem;';
-  title.textContent = 'Shipyard build planner';
+  title.textContent = '船坞建造规划器';
   box.appendChild(title);
 
   if (currentPlanetId == null) {
-    box.innerHTML += '<div style="color:#ff7b72;">Open a planet’s shipyard first.</div>';
+    box.innerHTML += '<div style="color:#ff7b72;">请先打开一个星球的船坞页面。</div>';
     return;
   }
 
@@ -127,17 +130,17 @@ async function openPlanner(shipKey) {
   };
 
   // Planet in view — taken from the page's current planet, not chosen by the user.
-  const pRow = row('Planet');
+  const pRow = row('星球');
   const pName = document.createElement('div');
   pName.style.cssText = 'flex:1; color:#e6edf3;';
-  pName.textContent = `Planet #${currentPlanetId}`;
+  pName.textContent = `星球 #${currentPlanetId}`;
   pRow.appendChild(pName);
 
   const info = document.createElement('div');
   info.style.cssText = 'color:#8b949e; margin:4px 0 10px; min-height:18px;';
   box.appendChild(info);
 
-  const qtyRow = row('Build qty');
+  const qtyRow = row('建造数量');
   const qtyInp = document.createElement('input');
   qtyInp.type = 'text'; qtyInp.inputMode = 'numeric';   // text = no spinner arrows
   qtyInp.style.cssText = 'width:56px; background:#0d1117; border:1px solid #30363d; color:#e6edf3; padding:5px 8px; border-radius:6px; text-align:right;';
@@ -160,10 +163,10 @@ async function openPlanner(shipKey) {
   const actions = document.createElement('div');
   actions.style.cssText = 'display:flex; gap:10px; justify-content:flex-end; margin-top:14px;';
   const sendBtn = document.createElement('button');
-  sendBtn.textContent = 'Send deficit via Quartermaster';
+  sendBtn.textContent = '由军需官补齐缺口';
   sendBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #d29922; background:#9e6a03; color:#fff; cursor:pointer;';
   const addBtn = document.createElement('button');
-  addBtn.textContent = '➕ To-do';
+  addBtn.textContent = '➕ 待办';
   addBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer; margin-right:auto;';
   addBtn.onclick = () => {
     if (!state || !window.__nxQueue) return;
@@ -173,7 +176,7 @@ async function openPlanner(shipKey) {
       from: state.owned, target: state.owned + qty });
   };
   const closeBtn = document.createElement('button');
-  closeBtn.textContent = 'Close';
+  closeBtn.textContent = '关闭';
   closeBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer;';
   closeBtn.onclick = closePanel;
   actions.append(addBtn, closeBtn, sendBtn);
@@ -183,7 +186,7 @@ async function openPlanner(shipKey) {
 
   async function loadPlanet() {
     state = null; table.textContent = ''; sendBtn.disabled = true;
-    info.textContent = 'Loading…';
+    info.textContent = '加载中…';
     let sd, fd, pd;
     try {
       [sd, fd, pd] = await Promise.all([
@@ -191,17 +194,17 @@ async function openPlanner(shipKey) {
         fetchJSON(`/api/planets/${currentPlanetId}/fleet`),
         fetchJSON(`/api/planets/${currentPlanetId}`),
       ]);
-    } catch (e) { info.textContent = `Error: ${e.message}`; return; }
+    } catch (e) { info.textContent = `错误：${e.message}`; return; }
     const pl = pd.planet || pd;
     if (pl.name) pName.textContent = pl.name;
     const def = findShip(sd.ships, shipKey);
-    if (!def) { info.textContent = `“${shipKey}” isn't buildable on this planet.`; qtyInp.disabled = true; return; }
+    if (!def) { info.textContent = `该星球无法建造“${shipKey}”。`; qtyInp.disabled = true; return; }
     qtyInp.disabled = false;
     const owned = ownedQty(fd.fleet, shipKey);
     state = { def, owned, stock: pl };
-    info.textContent = `${def.name} · owned ${owned}`;
+    info.textContent = `${def.name} · 当前拥有 ${owned}`;
     qtyInp.value = '1';
-    qtyHint.textContent = `(owned ${owned})`;
+    qtyHint.textContent = `（拥有 ${owned}）`;
     recompute();
   }
 
@@ -220,9 +223,9 @@ async function openPlanner(shipKey) {
     const head = document.createElement('div');
     head.style.cssText = cols + ' color:#8b949e; font-size:.75rem; text-transform:uppercase; letter-spacing:.04em; border-bottom:1px solid #30363d;';
     head.innerHTML = '<div style="padding:5px 0;"></div>' +
-      `<div style="${numCell}">Need</div>` +
-      `<div style="${numCell}">On planet</div>` +
-      `<div style="${numCell}">Deficit</div>`;
+      `<div style="${numCell}">所需</div>` +
+      `<div style="${numCell}">星球库存</div>` +
+      `<div style="${numCell}">缺口</div>`;
     table.appendChild(head);
 
     const deficit = {};
@@ -242,7 +245,7 @@ async function openPlanner(shipKey) {
     }
     const totalShort = Object.values(deficit).reduce((s, v) => s + v, 0);
     sendBtn.disabled = totalShort <= 0;
-    sendBtn.title = totalShort <= 0 ? 'Planet already has enough' : 'Open the Quartermaster to ship the deficit here';
+    sendBtn.title = totalShort <= 0 ? '该星球已有足够资源' : '打开军需官，将缺少的资源运送到这里';
     sendBtn.onclick = () => {
       const nonZero = Object.fromEntries(Object.entries(deficit).filter(([, v]) => v > 0));
       closePanel();
@@ -279,7 +282,7 @@ function injectButtons() {
     btn.className = 'nx-ship-btn';
     btn.type = 'button';
     btn.textContent = '🚀';
-    btn.title = 'Plan build resources (addon)';
+    btn.title = '规划建造资源（助手）';
     btn.style.cssText = 'width:26px; height:26px; padding:0; margin-left:8px; vertical-align:middle;' +
       'line-height:24px; font-size:16px; border-radius:6px; border:1px solid #d29922; background:#0d1117cc;' +
       'color:#e3b341; cursor:pointer;';

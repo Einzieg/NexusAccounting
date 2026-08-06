@@ -1,6 +1,7 @@
 // Combat simulator UI. The battle engine (tables, modifiers, Monte Carlo)
 // lives in engine.js, shared between this page and the node test suite.
 
+import './server-storage.js';
 import {
   shipDefs, setShipDefs, runSimulations, simulateOnce, computeMods,
   NO_MODS, TECHS, TECH_MAX_LEVEL, lossesToResources,
@@ -8,6 +9,7 @@ import {
 import {
   updateDistanceFromCoords, loadIntelReports, populatePlanetPicker, _resolvedDistanceAU,
 } from './simulator-intel.js';
+import { uiLabel } from './common.js';
 import './simulator-validate.js';   // side effect: wires the Validate button
 
 export function fmt(n) {
@@ -15,7 +17,7 @@ export function fmt(n) {
 }
 
 const GROUP_ORDER = ['combat', 'special', 'recon', 'utility'];
-const GROUP_LABELS = { combat: 'Combat', special: 'Special', recon: 'Recon', utility: 'Utility' };
+const GROUP_LABELS = { combat: '战斗舰船', special: '特殊舰船', recon: '侦察舰船', utility: '通用舰船' };
 
 function buildFleetInputs(tbodyId, side) {
   const tbody = document.getElementById(tbodyId);
@@ -80,9 +82,9 @@ function statText(def, mods) {
   const atk = Math.round(def.attack * (1 + attackBonus));
   const hp = Math.round(def.hp * (1 + mods.hull));
   const sh = Math.round(def.shieldHp * (1 + mods.shield));
-  const dr = mods.damageReduction > 0 ? ` · DR ${Math.round(mods.damageReduction * 100)}%` : '';
-  return `ATK ${atk} · HP ${hp} · SH ${sh}${dr}` +
-    (def.weaponType ? ` · ${def.weaponType}` : '') + ` · ${def.armorType}`;
+  const dr = mods.damageReduction > 0 ? ` · 减伤 ${Math.round(mods.damageReduction * 100)}%` : '';
+  return `攻击 ${atk} · 耐久 ${hp} · 护盾 ${sh}${dr}` +
+    (def.weaponType ? ` · ${uiLabel(def.weaponType)}` : '') + ` · ${uiLabel(def.armorType)}`;
 }
 
 // Refresh the stat line of every ship row on one side after a tech change.
@@ -112,13 +114,13 @@ function buildTechInputs(containerId, side) {
     }
     const label = document.createElement('span');
     label.className = 'tech-label';
-    const effectText = e => e.applies === 'ship' ? `+${(e.perLvl * 100).toFixed(0)}% ${e.ship} damage`
-      : e.applies === 'weapon' ? `+${(e.perLvl * 100).toFixed(0)}% ${e.weapon} damage`
-      : e.applies === 'weapon_all' ? `+${(e.perLvl * 100).toFixed(0)}% all weapon damage`
-      : e.applies === 'hull' ? `+${(e.perLvl * 100).toFixed(0)}% ship HP`
-      : e.applies === 'shield' ? `+${(e.perLvl * 100).toFixed(0)}% shield HP`
-      : `${(e.perLvl * 100).toFixed(0)}% damage reduction`;
-    label.title = effectText(tech) + (tech.also ? ` and ${effectText(tech.also)}` : '') + ' per level';
+    const effectText = e => e.applies === 'ship' ? `+${(e.perLvl * 100).toFixed(0)}% ${uiLabel(e.ship)}伤害`
+      : e.applies === 'weapon' ? `+${(e.perLvl * 100).toFixed(0)}% ${uiLabel(e.weapon)}伤害`
+      : e.applies === 'weapon_all' ? `+${(e.perLvl * 100).toFixed(0)}% 全部武器伤害`
+      : e.applies === 'hull' ? `+${(e.perLvl * 100).toFixed(0)}% 舰船耐久`
+      : e.applies === 'shield' ? `+${(e.perLvl * 100).toFixed(0)}% 护盾耐久`
+      : `${(e.perLvl * 100).toFixed(0)}% 伤害减免`;
+    label.title = `每级：${effectText(tech)}` + (tech.also ? `，并且${effectText(tech.also)}` : '');
     label.textContent = tech.name;
 
     const input = document.createElement('input');
@@ -166,11 +168,11 @@ function renderResults(result, opts) {
   const outcomeEl = document.getElementById('outcome-stats');
   outcomeEl.textContent = '';
   outcomeEl.append(
-    makeStatCard('Attacker wins', pct(o.attacker_won), 'win-attacker'),
-    makeStatCard('Defender wins', pct(o.defender_won), 'win-defender'),
-    makeStatCard('Defender holds (round cap)', pct(o.defender_held), 'win-defender'),
-    makeStatCard('Mutual destruction', pct(o.mutual_destruction), 'win-draw'),
-    makeStatCard('Avg rounds', result.avgRounds.toFixed(1), 'missions'),
+    makeStatCard('进攻方胜利', pct(o.attacker_won), 'win-attacker'),
+    makeStatCard('防守方胜利', pct(o.defender_won), 'win-defender'),
+    makeStatCard('防守方坚守（达到回合上限）', pct(o.defender_held), 'win-defender'),
+    makeStatCard('同归于尽', pct(o.mutual_destruction), 'win-draw'),
+    makeStatCard('平均回合数', result.avgRounds.toFixed(1), 'missions'),
   );
 
   renderLossTable('attacker-losses', result.attackerLosses);
@@ -186,9 +188,9 @@ function renderResults(result, opts) {
   const debrisEl = document.getElementById('debris-stats');
   debrisEl.textContent = '';
   debrisEl.append(
-    makeStatCard('Debris ore',       fmt((a.ore + d.ore) * opts.debrisRate),             'ore'),
-    makeStatCard('Debris silicates', fmt((a.silicates + d.silicates) * opts.debrisRate), 'silicates'),
-    makeStatCard('Debris alloys',    fmt((a.alloys + d.alloys) * opts.debrisRate),       'alloys'),
+    makeStatCard('残骸矿石',   fmt((a.ore + d.ore) * opts.debrisRate),             'ore'),
+    makeStatCard('残骸硅酸盐', fmt((a.silicates + d.silicates) * opts.debrisRate), 'silicates'),
+    makeStatCard('残骸合金',   fmt((a.alloys + d.alloys) * opts.debrisRate),       'alloys'),
   );
 
   renderFuel(result.attackerLosses, opts);
@@ -202,8 +204,8 @@ function renderSampleBattle(attackerFleet, defenderFleet, opts) {
   for (const r of (sample.trace || [])) {
     const tr = document.createElement('tr');
     const lost = [
-      r.attackerLost ? `${r.attackerLost} atk` : '',
-      r.defenderLost ? `${r.defenderLost} def` : '',
+      r.attackerLost ? `进攻方 ${r.attackerLost}` : '',
+      r.defenderLost ? `防守方 ${r.defenderLost}` : '',
     ].filter(Boolean).join(', ') || '—';
     const cells = [
       `${r.round}`,
@@ -218,7 +220,7 @@ function renderSampleBattle(attackerFleet, defenderFleet, opts) {
   const td = document.createElement('td');
   td.colSpan = 6;
   td.style.cssText = 'color:#8b949e;font-size:0.75rem;';
-  td.textContent = `Sample outcome: ${sample.outcome.replace(/_/g, ' ')} in ${sample.rounds} rounds (one run — varies; see stats above for averages).`;
+  td.textContent = `示例结果：${uiLabel(sample.outcome)}，共 ${sample.rounds} 回合（单次运行会有波动，请以上方统计均值为准）。`;
   note.appendChild(td);
   tbody.appendChild(note);
 }
@@ -236,14 +238,14 @@ function renderFuel(attackerLosses, opts) {
   const mult = opts.roundTrip ? 2 : 1;
   const total = rate * opts.distanceAU * mult;
   el.append(
-    makeStatCard(`Total fuel${opts.roundTrip ? ' (round trip)' : ' (one way)'}`,
-      opts.distanceAU > 0 ? fmt(total) : '— set origin & target system', 'hydrogen'),
-    makeStatCard('Fleet rate (Σ fuelRate)', fmt(rate), 'hydrogen'),
+    makeStatCard(`总燃料${opts.roundTrip ? '（往返）' : '（单程）'}`,
+      opts.distanceAU > 0 ? fmt(total) : '— 请设置出发与目标星系', 'hydrogen'),
+    makeStatCard('舰队燃料系数总和', fmt(rate), 'hydrogen'),
   );
   if (missing) {
     const hint = document.createElement('div');
     hint.style.cssText = 'font-size:0.75rem;color:#8b949e;margin-top:6px;';
-    hint.textContent = 'Some ships have no fuel rate yet — open the game and Scrape Now to refresh ship data.';
+    hint.textContent = '部分舰船尚无燃料系数，请打开游戏并点击“立即采集”刷新舰船数据。';
     el.appendChild(hint);
   }
 }
@@ -257,7 +259,7 @@ function updateSurvivors(side, losses) {
       return;
     }
     const alive = l.sent - l.lost;
-    span.textContent = `→ ${alive.toFixed(1)} alive`;
+    span.textContent = `→ ${alive.toFixed(1)} 存活`;
     span.style.color = alive >= l.sent * 0.99 ? '#56d364' : alive > 0 ? '#e3b341' : '#ff7b72';
   });
 }
@@ -281,7 +283,7 @@ function renderLossTable(tbodyId, losses) {
     const td = document.createElement('td');
     td.colSpan = 4;
     td.style.color = '#484f58';
-    td.textContent = 'No ships';
+    td.textContent = '无舰船';
     tr.appendChild(td);
     tbody.appendChild(tr);
   }
@@ -292,10 +294,10 @@ function renderCostCards(elId, losses) {
   const el = document.getElementById(elId);
   el.textContent = '';
   el.append(
-    makeStatCard('Ore lost',       fmt(cost.ore),       'ore'),
-    makeStatCard('Silicates lost', fmt(cost.silicates), 'silicates'),
-    makeStatCard('Hydrogen lost',  fmt(cost.hydrogen),  'hydrogen'),
-    makeStatCard('Alloys lost',    fmt(cost.alloys),    'alloys'),
+    makeStatCard('损失矿石',   fmt(cost.ore),       'ore'),
+    makeStatCard('损失硅酸盐', fmt(cost.silicates), 'silicates'),
+    makeStatCard('损失氢',     fmt(cost.hydrogen),  'hydrogen'),
+    makeStatCard('损失合金',   fmt(cost.alloys),    'alloys'),
   );
 }
 
@@ -303,11 +305,11 @@ function renderCostCards(elId, losses) {
 
 async function init() {
   const status = document.getElementById('sim-status');
-  const { ships } = await browser.storage.local.get('ships');
+  const { ships } = await globalThis.nexusStorage.get('ships');
 
   const defs = Object.values(ships || {});
   if (!defs.length || defs.some(d => d.hp === undefined)) {
-    status.textContent = 'Ship combat stats missing — open the dashboard and click "Scrape Now" first.';
+    status.textContent = '缺少舰船战斗数据，请先打开仪表盘并点击“立即采集”。';
     status.className = 'error';
     return;
   }
@@ -321,7 +323,7 @@ async function init() {
   buildTechInputs('attacker-techs', 'attacker');
   buildTechInputs('defender-techs', 'defender');
   await Promise.all([loadIntelReports(), populatePlanetPicker()]);
-  status.textContent = `${defs.length} ship types loaded.`;
+  status.textContent = `已加载 ${defs.length} 种舰船。`;
 }
 
 document.getElementById('btn-run').addEventListener('click', async function() {
@@ -331,10 +333,10 @@ document.getElementById('btn-run').addEventListener('click', async function() {
   const hasDefense = ['def-missile','def-laser','def-railgun','def-plasma','def-ion','def-ew']
     .some(id => (parseInt(document.getElementById(id).value, 10) || 0) > 0);
   if (!Object.keys(attackerFleet).length || (!Object.keys(defenderFleet).length && !hasDefense)) {
-    status.textContent = 'Attacker needs ships; defender needs ships or a turret level.';
+    status.textContent = '进攻方必须配置舰船；防守方必须配置舰船或防御设施等级。';
     return;
   }
-  status.textContent = 'Simulating…';
+  status.textContent = '模拟中…';
   await updateDistanceFromCoords();
   const distanceAU = _resolvedDistanceAU;
 
@@ -365,7 +367,7 @@ document.getElementById('btn-run').addEventListener('click', async function() {
     const result = runSimulations(attackerFleet, defenderFleet, opts);
     renderResults(result, opts);
     renderSampleBattle(attackerFleet, defenderFleet, opts);
-    status.textContent = `Done — ${opts.sims} simulations.`;
+    status.textContent = `完成，共运行 ${opts.sims} 次模拟。`;
     document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
   }, 10);
 });

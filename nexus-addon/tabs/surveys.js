@@ -1,6 +1,6 @@
 // Surveys tab.
 
-import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, SCALE_OPTS, SERIES_GETTERS, appendExtraResourceCards, computeEventBreakdown, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getMode, inWindowRange, isUnfiltered, makeResourceLineChart, makeStatCard, recordsForMode, renderLostCards, store, windowActive, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, SCALE_OPTS, SERIES_GETTERS, appendExtraResourceCards, computeEventBreakdown, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getMode, inWindowRange, isUnfiltered, makeResourceLineChart, makeStatCard, recordsForMode, renderLostCards, store, uiLabel, windowActive, zoneCell } from '../common.js';
 
 export let chartResources, chartEvents, chartByEvent;
 
@@ -71,12 +71,12 @@ export function populateEventOptions() {
   sel.textContent = '';
   const optAll = document.createElement('option');
   optAll.value = 'all';
-  optAll.textContent = 'All events';
+  optAll.textContent = '全部事件';
   sel.appendChild(optAll);
   for (const t of types) {
     const o = document.createElement('option');
     o.value = t;
-    o.textContent = t.replace(/_/g, ' ');
+    o.textContent = uiLabel(t);
     sel.appendChild(o);
   }
   sel.value = types.includes(current) || current === 'all' ? current : 'all';
@@ -89,26 +89,27 @@ export function renderCollected(t, periodLabel) {
   if (noData) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
-    p.textContent = 'No data yet — log in to ';
+    p.textContent = '尚无数据，请先登录 ';
     const a = document.createElement('a');
-    a.href = 'https://s0.nexuslegacy.space';
+    a.href = 'https://nexuslegacy.space';
+    void globalThis.nexusStorage.getActiveServer().then(server => { a.href = server.origin; });
     a.target = '_blank';
     a.style.color = '#58a6ff';
     a.textContent = 'Nexus Legacy';
-    p.append(a, document.createTextNode(' then click Scrape Now.'));
+    p.append(a, document.createTextNode('，然后点击“立即同步”。'));
     container.appendChild(p);
     return;
   }
   container.append(
-    makeStatCard(`Ore${periodLabel}`,        fmt(t.ore),        'ore'),
-    makeStatCard(`Silicates${periodLabel}`,  fmt(t.silicates),  'silicates'),
-    makeStatCard(`Hydrogen${periodLabel}`,   fmt(t.hydrogen),   'hydrogen'),
+    makeStatCard(`矿石${periodLabel}`,        fmt(t.ore),        'ore'),
+    makeStatCard(`硅酸盐${periodLabel}`,      fmt(t.silicates),  'silicates'),
+    makeStatCard(`氢${periodLabel}`,          fmt(t.hydrogen),   'hydrogen'),
   );
   appendExtraResourceCards(container, t, periodLabel);
   container.append(
-    makeStatCard(`Missions${periodLabel}`,   fmt(t.missions),   'missions'),
-    makeStatCard(`Ships lost${periodLabel}`, fmt(t.ships_lost), '', 'color:#ff7b72'),
-    makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('survey', getMode())), 'hydrogen'),
+    makeStatCard(`任务数${periodLabel}`,       fmt(t.missions),   'missions'),
+    makeStatCard(`损失舰船${periodLabel}`,     fmt(t.ships_lost), '', 'color:#ff7b72'),
+    makeStatCard(`燃料消耗${periodLabel}`,     fmt(fuelForMode('survey', getMode())), 'hydrogen'),
   );
 }
 
@@ -118,14 +119,14 @@ export function renderLost(rl, periodLabel) {
 
 export function renderResourceChart(series, labelKey) {
   if (chartResources) chartResources.destroy();
-  chartResources = makeResourceLineChart('chart-resources', series, labelKey, { field: 'missions', label: 'Missions' });
+  chartResources = makeResourceLineChart('chart-resources', series, labelKey, { field: 'missions', label: '任务数' });
 }
 
 export function renderEventsChart(events) {
   const total = events.reduce((s, e) => s + e.count, 0);
   const labels = events.map(e => {
     const pct = total ? (e.count / total * 100).toFixed(1) : 0;
-    return `${e.event_type.replace(/_/g, ' ')} — ${e.count} (${pct}%)`;
+    return `${uiLabel(e.event_type)} — ${e.count}（${pct}%）`;
   });
   const colors = ['#58a6ff','#56d364','#f0883e','#79c0ff','#d2a8ff','#ff7b72','#ffa657','#8b949e','#e3b341'];
   if (chartEvents) chartEvents.destroy();
@@ -140,7 +141,7 @@ export function renderEventsChart(events) {
           callbacks: {
             label: ctx => {
               const pct = total ? (ctx.parsed / total * 100).toFixed(1) : 0;
-              return ` ${ctx.parsed} missions (${pct}%)`;
+              return ` ${ctx.parsed} 个任务（${pct}%）`;
             },
           },
         },
@@ -151,7 +152,7 @@ export function renderEventsChart(events) {
 
 export function renderByEventChart(events) {
   const filtered = events.filter(e => RESOURCE_SERIES.some(d => (e[d.field] || 0) > 0));
-  const labels = filtered.map(e => e.event_type.replace(/_/g, ' '));
+  const labels = filtered.map(e => uiLabel(e.event_type));
   const ALWAYS = new Set(['ore', 'silicates', 'hydrogen']);
   const shown = RESOURCE_SERIES.filter(d =>
     ALWAYS.has(d.field) || filtered.some(e => (e[d.field] || 0) > 0));
@@ -210,7 +211,7 @@ export function renderTable() {
   });
 
   const totalPages = Math.ceil(allReports.length / PER_PAGE);
-  document.getElementById('page-info').textContent = `Page ${currentPage} / ${Math.max(1, totalPages)} (${allReports.length} total)`;
+  document.getElementById('page-info').textContent = `第 ${currentPage} / ${Math.max(1, totalPages)} 页（共 ${allReports.length} 条）`;
   document.getElementById('btn-prev').disabled = currentPage <= 1;
   document.getElementById('btn-next').disabled = currentPage >= totalPages;
 
@@ -243,7 +244,7 @@ export function renderTable() {
     const tdEvt = document.createElement('td');
     const badge = document.createElement('span');
     badge.className = `badge ${r.event_type}`;
-    badge.textContent = r.event_type.replace(/_/g, ' ');
+    badge.textContent = uiLabel(r.event_type);
     tdEvt.appendChild(badge);
 
     const tdOre = zeroTd(r.ore);       tdOre.className = 'ore';

@@ -9,8 +9,8 @@ export let chartGlobal, chartGlobalPeriod, chartGlobalSrc;
 export const GLOBAL_RES_KEYS = ['ore', 'silicates', 'hydrogen', ...EXTRA_RES_KEYS_UI];
 
 export const SOURCE_COLORS = {
-  Survey: '#58a6ff', Pirates: '#ff7b72', Mining: '#e3b341',
-  Debris: '#56d364', Expeditions: '#bc8cff', Wormhole: '#39c5cf', Xeno: '#d29922',
+  勘测: '#58a6ff', 海盗: '#ff7b72', 采矿: '#e3b341',
+  残骸: '#56d364', 远征: '#bc8cff', 虫洞: '#39c5cf', 异星遗迹: '#d29922',
 };
 
 // Weighted value of a resource bag (ore×1 … alloys×5, exotics×10).
@@ -27,18 +27,18 @@ export function globalRecords() {
   const add = (src, list, norm) => {
     for (const r of (list || [])) recs.push({ src, r: norm ? norm(r) : r });
   };
-  add('Survey', store.recent_reports);
-  add('Pirates', store.pirate_recent_reports);
-  add('Mining', store.mining_recent_reports);
+  add('勘测', store.recent_reports);
+  add('海盗', store.pirate_recent_reports);
+  add('采矿', store.mining_recent_reports);
   const normExp = r => {
     const o = { created_at: r.created_at, zone: r.zone, ships_destroyed_raw: r.ships_destroyed_raw };
     for (const k of GLOBAL_RES_KEYS) o[k] = (r.loot && r.loot[k]) || 0;
     return o;
   };
-  add('Expeditions', (store.exp_recent_reports || []).filter(r => r.kind !== 'wormhole'), normExp);
-  add('Wormhole', (store.exp_recent_reports || []).filter(r => r.kind === 'wormhole'), normExp);
-  add('Xeno', store.xeno_recent_reports, normExp);
-  add('Debris', store.debris_collection_log, r => {
+  add('远征', (store.exp_recent_reports || []).filter(r => r.kind !== 'wormhole'), normExp);
+  add('虫洞', (store.exp_recent_reports || []).filter(r => r.kind === 'wormhole'), normExp);
+  add('异星遗迹', store.xeno_recent_reports, normExp);
+  add('残骸', store.debris_collection_log, r => {
     const o = { created_at: r.collected_at, zone: r.zone };
     for (const k of GLOBAL_RES_KEYS) o[k] = r[k] || 0;
     return o;
@@ -80,9 +80,9 @@ export function renderGlobalTab() {
   let collected, lost, bySrc, ops;
   if (allTime) {
     const srcTotals = {
-      Survey: store.totals, Pirates: store.pirate_totals, Mining: store.mining_totals,
-      Debris: store.debris_collected, Expeditions: store.expedition_totals, Wormhole: store.wormhole_totals,
-      Xeno: store.xeno_totals,
+      勘测: store.totals, 海盗: store.pirate_totals, 采矿: store.mining_totals,
+      残骸: store.debris_collected, 远征: store.expedition_totals, 虫洞: store.wormhole_totals,
+      异星遗迹: store.xeno_totals,
     };
     collected = emptyResources();
     bySrc = {};
@@ -121,12 +121,12 @@ export function renderGlobalTab() {
   const cEl = document.getElementById('g-stats-collected');
   cEl.textContent = '';
   cEl.append(
-    makeStatCard(`Ore${periodLabel}`, fmt(collected.ore), 'ore'),
-    makeStatCard(`Silicates${periodLabel}`, fmt(collected.silicates), 'silicates'),
-    makeStatCard(`Hydrogen${periodLabel}`, fmt(collected.hydrogen), 'hydrogen'),
+    makeStatCard(`矿石${periodLabel}`, fmt(collected.ore), 'ore'),
+    makeStatCard(`硅酸盐${periodLabel}`, fmt(collected.silicates), 'silicates'),
+    makeStatCard(`氢${periodLabel}`, fmt(collected.hydrogen), 'hydrogen'),
   );
   appendExtraResourceCards(cEl, collected, periodLabel);
-  cEl.appendChild(makeStatCard(`Operations${periodLabel}`, fmt(ops), 'missions'));
+  cEl.appendChild(makeStatCard(`操作次数${periodLabel}`, fmt(ops), 'missions'));
 
   renderNetCards('g-stats-net', collected, lost, periodLabel, fuel);
 
@@ -134,7 +134,7 @@ export function renderGlobalTab() {
     mode, { ...SERIES_GETTERS, count: () => 1 });
   if (chartGlobalPeriod) chartGlobalPeriod.destroy();
   chartGlobalPeriod = makeResourceLineChart('chart-global-period', series, getLabelKey(mode),
-    { field: 'count', label: 'Reports' });
+    { field: 'count', label: '报告数' });
 
   if (chartGlobal) chartGlobal.destroy();
   chartGlobal = makeResourceDoughnut('chart-global', collected);

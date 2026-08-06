@@ -40,21 +40,21 @@ function buildSection() {
   section.className = 'sidebar-section';
   section.id = 'nexus-addon-section';
   section.innerHTML = `
-    <div class="sidebar-section-label">Addon</div>
+    <div class="sidebar-section-label">助手</div>
     <a class="sidebar-link" href="${DASH_URL}" target="_blank" rel="noopener" data-nexus-addon="1">
-      ${ICON}<span class="sidebar-link-label">Nexus Tracker</span>
+      ${ICON}<span class="sidebar-link-label">Nexus Accounting</span>
     </a>
     <a class="sidebar-link" href="#" data-nexus-calc="1">
-      ${CALC_ICON}<span class="sidebar-link-label">Ratio Calculator</span>
+      ${CALC_ICON}<span class="sidebar-link-label">比例计算器</span>
     </a>
     <a class="sidebar-link" href="#" data-nexus-lsbelts="1">
-      ${ICON}<span class="sidebar-link-label">Live Search Belts</span>
+      ${ICON}<span class="sidebar-link-label">实时搜索小行星带</span>
     </a>
     <a class="sidebar-link" href="#" data-nexus-empire="1">
-      ${EMPIRE_ICON}<span class="sidebar-link-label">Empire View</span>
+      ${EMPIRE_ICON}<span class="sidebar-link-label">帝国总览</span>
     </a>
     <a class="sidebar-link" href="#" data-nexus-guide="1">
-      ${GUIDE_ICON}<span class="sidebar-link-label">User Guide</span>
+      ${GUIDE_ICON}<span class="sidebar-link-label">用户指南</span>
     </a>`;
   return section;
 }
@@ -90,7 +90,7 @@ function openRatioCalc() {
   header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;' +
     'padding:10px 14px;border-bottom:1px solid #39405a;cursor:move;user-select:none';
   const title = document.createElement('span');
-  title.textContent = 'Ratio Calculator'; title.style.fontWeight = '600';
+  title.textContent = '比例计算器'; title.style.fontWeight = '600';
   const close = document.createElement('button');
   close.textContent = '✕';
   close.style.cssText = 'background:transparent;border:none;color:#8b949e;cursor:pointer;font-size:1rem';
@@ -112,9 +112,9 @@ function openRatioCalc() {
     wrap.append(r);
     return inp;
   };
-  const a = row('Offer (receive)', 'amount');
-  const b = row('For (pay)', 'amount');
-  const r = row('Ratio (received per 1 paid)', 'ratio');
+  const a = row('获得数量', '数量');
+  const b = row('支付数量', '数量');
+  const r = row('比例（每支付 1 获得）', '比例');
   r.style.cssText += ';color:#e3b341;font-weight:600';
   for (const el of [a, b]) { el.type = 'number'; el.min = '0'; el.step = '1'; el.inputMode = 'numeric'; }
   r.type = 'text'; r.inputMode = 'decimal';   // type=text so a mid-typing "2." isn't discarded
@@ -207,6 +207,8 @@ const REC_SHIP = {
   gas: ['Gas Collector', 17], quantum: ['Gas Collector', 3],
   ice: ['Ice Drill', 25], dark: ['Ice Drill', 3],
 };
+const SHIP_LABELS = { 'Mining Vessel': '采矿船', 'Gas Collector': '气体收集船', 'Ice Drill': '采冰船', Excavator: '挖掘机' };
+const TYPE_LABELS = { ore: '矿石', gas: '气体', ice: '冰', plasma: '等离子', quantum: '量子尘', dark: '暗物质' };
 const REC_CYCLES = 10;
 const EXCAVATOR_BONUS = 1.2;
 // Mining ships the recommendation manages; escort/combat ships in the editor
@@ -263,7 +265,7 @@ function lsConfirm(message, ships, defs, altLabel) {
       b.style.cssText = `padding:7px 16px;border-radius:6px;border:1px solid #39405a;cursor:pointer;${primary ? 'background:#3b82f6;color:#fff;border-color:#3b82f6' : 'background:#2a3146;color:#e6e8ee'}`;
       return b;
     };
-    const cancel = mk('Cancel', false), ok = mk('Confirm', true);
+    const cancel = mk('取消', false), ok = mk('确认', true);
     const done = v => { ov.remove(); resolve(v); };
     cancel.onclick = () => done(false);
     ok.onclick = () => done('ok');
@@ -296,7 +298,7 @@ let fieldsPanel = null;
 async function openFieldsPanel() {
   if (fieldsPanel) { fieldsPanel.remove(); fieldsPanel = null; }
   const { live_search_last_matches, live_search_last_at, live_search } =
-    await ext.storage.local.get(['live_search_last_matches', 'live_search_last_at', 'live_search']);
+    await globalThis.nexusStorage.get(['live_search_last_matches', 'live_search_last_at', 'live_search']);
   let matches = live_search_last_matches || [];
   const running = !!(live_search && live_search.enabled);
 
@@ -311,10 +313,10 @@ async function openFieldsPanel() {
     'padding:10px 14px;border-bottom:1px solid #39405a;cursor:move;user-select:none';
   const titleWrap = document.createElement('div');
   const title = document.createElement('div');
-  title.textContent = `Asteroid matches (${matches.length})`; title.style.fontWeight = '600';
+  title.textContent = `小行星匹配结果（${matches.length}）`; title.style.fontWeight = '600';
   const sub = document.createElement('div');
   sub.style.cssText = 'color:#8b949e;font-size:0.75rem';
-  sub.textContent = live_search_last_at ? `as of ${new Date(live_search_last_at).toLocaleTimeString()}` : 'no scan yet';
+  sub.textContent = live_search_last_at ? `更新于 ${new Date(live_search_last_at).toLocaleTimeString('zh-CN')}` : '尚未扫描';
   titleWrap.append(title, sub);
   const close = document.createElement('button');
   close.textContent = '✕';
@@ -327,7 +329,7 @@ async function openFieldsPanel() {
   // fetched once; switching template just re-caps and re-renders.
   const planetId = live_search && live_search.planetId;
   const { fleet_templates, template_selections } =
-    await ext.storage.local.get(['fleet_templates', 'template_selections']);
+    await globalThis.nexusStorage.get(['fleet_templates', 'template_selections']);
   const templates = (fleet_templates || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical picker
   let avail = {};
   if (planetId) {
@@ -410,7 +412,7 @@ async function openFieldsPanel() {
   pickWrap.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid #39405a';
   // Clickable toggle (caret + label) — clearly affords showing/hiding the editor.
   const toggle = document.createElement('button');
-  toggle.title = 'Show/hide fleet editor';
+  toggle.title = '显示或隐藏舰队编辑器';
   toggle.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:#21262d;' +
     'border:1px solid #30363d;border-radius:6px;color:#e6edf3;cursor:pointer;padding:4px 9px;font-size:0.85rem';
   toggle.onmouseenter = () => { toggle.style.background = '#2a3146'; };
@@ -418,7 +420,7 @@ async function openFieldsPanel() {
   const caret = document.createElement('span');
   caret.textContent = '▾'; caret.style.cssText = 'transition:transform .15s;transform:rotate(-90deg)';
   const tLbl = document.createElement('span');
-  tLbl.textContent = 'Edit fleet';
+  tLbl.textContent = '编辑舰队';
   toggle.append(caret, tLbl);
   toggle.onclick = () => {
     const hidden = editorWrap.style.display === 'none';
@@ -426,11 +428,11 @@ async function openFieldsPanel() {
     caret.style.transform = hidden ? '' : 'rotate(-90deg)';
   };
   const pickLbl = document.createElement('span');
-  pickLbl.textContent = 'Fleet:'; pickLbl.style.color = '#8b949e';
+  pickLbl.textContent = '舰队：'; pickLbl.style.color = '#8b949e';
   const picker = document.createElement('select');
   picker.style.cssText = 'background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:4px 8px;border-radius:6px;font-size:0.85rem';
   if (!templates.length) {
-    const o = document.createElement('option'); o.textContent = '— none (create in Asteroids tab) —'; picker.appendChild(o); picker.disabled = true;
+    const o = document.createElement('option'); o.textContent = '— 无（请先在“小行星”页创建）—'; picker.appendChild(o); picker.disabled = true;
   } else {
     for (const t of templates) {
       const o = document.createElement('option'); o.value = t.id; o.textContent = t.name;
@@ -440,7 +442,7 @@ async function openFieldsPanel() {
   }
   // Excavator +20% toggle — boosts the recommended-ship calculation.
   const excLbl = document.createElement('label');
-  excLbl.title = 'Include an Excavator: +20% fleet extraction capacity in the recommendation';
+  excLbl.title = '在推荐方案中加入挖掘机，使舰队开采能力提高 20%';
   excLbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px;color:#8b949e;font-size:0.85rem;cursor:pointer';
   const excChk = document.createElement('input');
   excChk.type = 'checkbox';
@@ -450,7 +452,7 @@ async function openFieldsPanel() {
     localStorage.setItem('nx-ls-excavator', excavator ? '1' : '0');
     renderRows();
   });
-  excLbl.append(excChk, document.createTextNode('Excavator +20%'));
+  excLbl.append(excChk, document.createTextNode('挖掘机 +20%'));
   pickWrap.append(pickLbl, picker, toggle, excLbl);
 
   // Per-ship-type editor — one line per ship available on the planet (or in the
@@ -463,7 +465,7 @@ async function openFieldsPanel() {
       ...Object.keys((tpl && tpl.ships) || {}).map(Number),
       ...Object.keys(avail).map(Number).filter(id => (avail[id] || 0) > 0),
     ]);
-    if (!ids.size) { editorWrap.textContent = 'No ships available on the source planet.'; editorWrap.style.color = '#8b949e'; return; }
+    if (!ids.size) { editorWrap.textContent = '出发星球没有可用舰船。'; editorWrap.style.color = '#8b949e'; return; }
     editorWrap.style.color = '';
     for (const id of ids) {
       const def = shipDefs[id] || {};
@@ -506,15 +508,15 @@ async function openFieldsPanel() {
 
   function renderRows() {
     body.textContent = '';
-    if (!matches.length) { body.textContent = 'No current matches.'; body.style.color = '#8b949e'; return; }
+    if (!matches.length) { body.textContent = '当前没有匹配结果。'; body.style.color = '#8b949e'; return; }
 
     const table = document.createElement('table');
     table.style.cssText = 'width:100%;border-collapse:collapse';
     table.innerHTML = `<thead><tr style="text-align:left;color:#8b949e;font-size:0.8rem">
-      <th style="padding:4px 6px"></th><th style="padding:4px 6px"></th><th style="padding:4px 6px">Fuel (System)</th>
-      <th style="padding:4px 6px">Type</th><th style="padding:4px 6px;text-align:right">Mult</th>
-      <th style="padding:4px 6px;text-align:right">Left %</th>
-      <th style="padding:4px 6px">Recommended</th></tr></thead>`;
+      <th style="padding:4px 6px"></th><th style="padding:4px 6px"></th><th style="padding:4px 6px">燃料（星系）</th>
+      <th style="padding:4px 6px">类型</th><th style="padding:4px 6px;text-align:right">倍率</th>
+      <th style="padding:4px 6px;text-align:right">剩余 %</th>
+      <th style="padding:4px 6px">推荐方案</th></tr></thead>`;
     const tb = document.createElement('tbody');
     for (const m of matches) {
       const tr = document.createElement('tr');
@@ -539,9 +541,9 @@ async function openFieldsPanel() {
       const tplShips = effectiveShips();
       const ships = tplShips.length ? tplShips : fleetWithRec(recShips);
       const canMine = !!(planetId && ships.length);
-      const mineTip = !planetId ? 'Live search has no source planet set.'
-        : !ships.length ? 'No recommendation and no ships set in the editor.'
-        : 'Send the recommended fleet to mine this field.';
+      const mineTip = !planetId ? '实时搜索尚未设置出发星球。'
+        : !ships.length ? '没有推荐方案，舰队编辑器中也未设置舰船。'
+        : '派出推荐舰队开采该小行星场。';
 
       const mineTd = document.createElement('td');
       mineTd.style.cssText = 'padding:4px 6px';
@@ -556,8 +558,8 @@ async function openFieldsPanel() {
         if (!canMine) return;
         const short = ships.some(s => (avail[s.shipDefId] || 0) < s.quantity);
         const r = await lsConfirm(
-          `Send fleet?\nTo: ${m.name} (${m.system})\nFrom: ${planetName}` +
-          (short ? '\n\n⚠ Some ships are short on this planet; sending what is available.' : ''),
+          `派出舰队？\n目标：${m.name}（${m.system}）\n出发地：${planetName}` +
+          (short ? '\n\n⚠ 该星球上的部分舰船数量不足，将派出当前可用舰船。' : ''),
           ships, shipDefs);
         if (!r) return;
         const sendShips = ships;
@@ -569,7 +571,7 @@ async function openFieldsPanel() {
         const res = await ext.runtime.sendMessage({
           type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600,
         });
-        if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`Send failed: ${res.error}`); }
+        if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`派出失败：${res.error}`); }
         else {
           mineBtn.textContent = '✓'; mineBtn.style.cssText = 'background:#1f6feb;border:1px solid #1f6feb;color:#fff;border-radius:6px;padding:2px 8px;font-size:0.95rem';
           miningFieldIds.add(m.id);   // optimistic — GET_MISSIONS can lag right after the send
@@ -590,10 +592,10 @@ async function openFieldsPanel() {
 
       const cell = (txt, extra = '') => { const td = document.createElement('td'); td.style.cssText = `padding:4px 6px;${extra}`; td.textContent = txt; return td; };
       tr.append(selTd, mineTd, fuelTd,
-        cell(m.type, `color:${TYPE_COLOR[m.type] || '#e6e8ee'}`),
+        cell(TYPE_LABELS[m.type] || m.type, `color:${TYPE_COLOR[m.type] || '#e6e8ee'}`),
         cell(m.mult != null ? `×${m.mult}` : '—', 'text-align:right'),
         cell(m.leftPct != null ? `${m.leftPct}%` : '—', 'text-align:right'),
-        cell(rec ? `${rec.count}× ${rec.name}` : '—'));
+        cell(rec ? `${rec.count}× ${SHIP_LABELS[rec.name] || rec.name}` : '—'));
       tb.appendChild(tr);
     }
     table.appendChild(tb);
@@ -602,7 +604,7 @@ async function openFieldsPanel() {
 
   picker.addEventListener('change', () => {
     tpl = templates.find(t => String(t.id) === picker.value) || null;
-    ext.storage.local.set({ template_selections: { ...(template_selections || {}), 'af-template-select': picker.value } });
+    globalThis.nexusStorage.set({ template_selections: { ...(template_selections || {}), 'af-template-select': picker.value } });
     seedFromTemplate(tpl);
     buildEditor();
     renderRows();
@@ -613,15 +615,15 @@ async function openFieldsPanel() {
   // so the window doesn't sit on a stale "as of" time. Self-removes once closed.
   function onScan(changes, area) {
     if (area !== 'local' || !('live_search_last_at' in changes || 'live_search_last_matches' in changes)) return;
-    if (!panel.isConnected) { ext.storage.onChanged.removeListener(onScan); return; }
-    ext.storage.local.get(['live_search_last_matches', 'live_search_last_at']).then(d => {
+    if (!panel.isConnected) { globalThis.nexusStorage.onChanged.removeListener(onScan); return; }
+    globalThis.nexusStorage.get(['live_search_last_matches', 'live_search_last_at']).then(d => {
       matches = d.live_search_last_matches || [];
-      title.textContent = `Asteroid matches (${matches.length})`;
-      sub.textContent = d.live_search_last_at ? `as of ${new Date(d.live_search_last_at).toLocaleTimeString()}` : 'no scan yet';
+      title.textContent = `小行星匹配结果（${matches.length}）`;
+      sub.textContent = d.live_search_last_at ? `更新于 ${new Date(d.live_search_last_at).toLocaleTimeString('zh-CN')}` : '尚未扫描';
       renderRows();
     });
   }
-  ext.storage.onChanged.addListener(onScan);
+  globalThis.nexusStorage.onChanged.addListener(onScan);
 
   const footer = document.createElement('div');
   footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;' +
@@ -632,8 +634,8 @@ async function openFieldsPanel() {
   const toggleBtn = document.createElement('button');
   let curRunning = running;
   const paintToggle = () => {
-    toggleBtn.textContent = curRunning ? 'Stop Live Search' : 'Start Live Search';
-    note.textContent = curRunning ? 'Live search running (every 5 min).' : 'Live search stopped.';
+    toggleBtn.textContent = curRunning ? '停止实时搜索' : '启动实时搜索';
+    note.textContent = curRunning ? '实时搜索运行中（每 5 分钟一次）。' : '实时搜索已停止。';
     toggleBtn.style.cssText = curRunning
       ? 'background:#da3633;border:1px solid #f85149;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer'
       : 'background:#238636;border:1px solid #2ea043;color:#fff;padding:6px 12px;border-radius:6px;cursor:pointer';
@@ -645,7 +647,7 @@ async function openFieldsPanel() {
       curRunning = false;
     } else {
       if (!live_search || live_search.planetId == null) {
-        window.alert('Configure live search in the Tracker’s Asteroids tab first (planet + filters).');
+        window.alert('请先在助手的“小行星”页面配置实时搜索（星球和筛选条件）。');
         return;
       }
       await ext.runtime.sendMessage({ type: 'SET_LIVE_SEARCH', config: { ...live_search, enabled: true } });
@@ -657,8 +659,8 @@ async function openFieldsPanel() {
   // Sets the editor to the recommended ship count for the row picked via the
   // radio column (escorts kept, miner swapped in — same merge as the pickaxe).
   const optBtn = document.createElement('button');
-  optBtn.textContent = 'Optimise Mining Fleet';
-  optBtn.title = 'Set the editor to the recommended ship count for the selected row';
+  optBtn.textContent = '优化采矿舰队';
+  optBtn.title = '将编辑器设置为所选目标的推荐舰船数量';
   const paintOptBtn = () => {
     const has = selectedMatchId != null;
     optBtn.disabled = !has;
@@ -675,7 +677,7 @@ async function openFieldsPanel() {
       const excId = nameToId['Excavator'];
       if (excId != null && (avail[excId] || 0) > 0) recShips.push({ shipDefId: excId, quantity: 1 });
     }
-    if (!recShips.length) { window.alert('No mining recommendation for this field.'); return; }
+    if (!recShips.length) { window.alert('该小行星场没有可用的采矿推荐方案。'); return; }
     const merged = fleetWithRec(recShips);   // computed first: reads escorts off shipsState before it's cleared
     shipsState.clear();
     for (const s of merged) shipsState.set(s.shipDefId, s.quantity);
@@ -698,6 +700,6 @@ ext.runtime.onMessage.addListener(msg => {
 });
 
 // Game tab opened from a notification with no tab previously open: show the panel.
-ext.storage.local.get('live_search_open_panel').then(({ live_search_open_panel }) => {
-  if (live_search_open_panel) { ext.storage.local.set({ live_search_open_panel: false }); openFieldsPanel(); }
+globalThis.nexusStorage.get('live_search_open_panel').then(({ live_search_open_panel }) => {
+  if (live_search_open_panel) { globalThis.nexusStorage.set({ live_search_open_panel: false }); openFieldsPanel(); }
 });

@@ -2,6 +2,7 @@
 
 import { shipDefs } from './engine.js';
 import { fmt, updateFleetStats } from './simulator.js';   // circular: both are functions, only called from handlers
+import { uiLabel } from './common.js';
 
 // ── System coordinates & distance ──────────────────────────────────────────
 
@@ -38,7 +39,7 @@ async function updateDistanceFromCoords() {
   const display = document.getElementById('distance-display');
   if (!a || !d) { display.textContent = ''; _resolvedDistanceAU = 0; return; }
   _resolvedDistanceAU = coordDistanceAU(a, d);
-  display.textContent = `↔ ${_resolvedDistanceAU.toFixed(2)} AU`;
+  display.textContent = `↔ ${_resolvedDistanceAU.toFixed(2)} 天文单位`;
 }
 
 // Clear cached coords when user types manually (so it re-resolves by name).
@@ -59,12 +60,12 @@ async function populatePlanetPicker() {
   sel.textContent = '';
   const allOpt = document.createElement('option');
   allOpt.value = 'all';
-  allOpt.textContent = 'All planets';
+  allOpt.textContent = '全部星球';
   sel.appendChild(allOpt);
   for (const p of res.planets) {
     const o = document.createElement('option');
     o.value = p.id;
-    o.textContent = p.isHomeworld ? `${p.name} (home)` : p.name;
+    o.textContent = p.isHomeworld ? `${p.name}（母星）` : p.name;
     if (p.systemName) o.dataset.systemName = p.systemName;
     if (p.systemId != null) o.dataset.systemId = p.systemId;
     if (p.isHomeworld) o.selected = true;
@@ -80,7 +81,7 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
     const classFilter = document.getElementById('fleet-class').value;
     const res = await browser.runtime.sendMessage({ type: 'GET_FLEET', planetId });
     if (res.error) {
-      status.textContent = `Load fleet failed: ${res.error}`;
+      status.textContent = `加载舰队失败：${res.error}`;
       return;
     }
     let total = 0;
@@ -95,8 +96,8 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
     const planetLabel = selOpt?.textContent || '';
     const typeLabel = classFilter
       ? document.getElementById('fleet-class').selectedOptions[0]?.textContent
-      : 'all types';
-    status.textContent = `Loaded ${total} ships (${typeLabel}) from ${planetLabel}.`;
+      : '全部类型';
+    status.textContent = `已从 ${planetLabel} 加载 ${total} 艘舰船（${typeLabel}）。`;
     if (selOpt?.dataset.systemName) {
       document.getElementById('atk-system').value = selOpt.dataset.systemName;
       updateDistanceFromCoords();
@@ -110,9 +111,9 @@ document.getElementById('btn-load-fleet').addEventListener('click', async functi
 
 async function fillTechLevels(side) {
   const status = document.getElementById('sim-status');
-  const { research } = await browser.storage.local.get('research');
+  const { research } = await globalThis.nexusStorage.get('research');
   if (!research?.length) {
-    status.textContent = 'No research data — open the game and click Scrape Now first.';
+    status.textContent = '尚无研究数据，请先打开游戏并点击“立即采集”。';
     return;
   }
   const levels = {};
@@ -124,7 +125,7 @@ async function fillTechLevels(side) {
     if (lvl > 0) filled++;
   });
   updateFleetStats(side);
-  status.textContent = `Filled ${filled} research levels into ${side} tech.`;
+  status.textContent = `已将 ${filled} 项研究等级填入${side === 'attacker' ? '进攻方' : '防守方'}科技。`;
 }
 
 document.getElementById('btn-fill-tech-attacker').addEventListener('click', () => fillTechLevels('attacker'));
@@ -154,20 +155,20 @@ let intelReports = [];
 
 async function loadIntelReports() {
   const { spy_reports, camp_scout_reports } =
-    await browser.storage.local.get(['spy_reports', 'camp_scout_reports']);
+    await globalThis.nexusStorage.get(['spy_reports', 'camp_scout_reports']);
   intelReports = [];
   for (const r of (camp_scout_reports || [])) {
     if (!r.fleet?.length) continue;
     intelReports.push({
       id: `camp-${r.id}`,
-      label: `Camp #${r.camp_id ?? '?'} — ${new Date(r.created_at).toLocaleDateString()}`,
+      label: `营地 #${r.camp_id ?? '?'} — ${new Date(r.created_at).toLocaleDateString('zh-CN')}`,
       fleet: r.fleet, buildings: [], resources: null,
     });
   }
   for (const r of (spy_reports || [])) {
     intelReports.push({
       id: `spy-${r.id}`,
-      label: `Spy: ${r.target_name}${r.target_user ? ` (${r.target_user})` : ''} — ${new Date(r.created_at).toLocaleDateString()}`,
+      label: `间谍报告：${uiLabel(r.target_name)}${r.target_user ? `（${r.target_user}）` : ''} — ${new Date(r.created_at).toLocaleDateString('zh-CN')}`,
       fleet: r.fleet || [], buildings: r.buildings || [], resources: r.resources,
       target_system_id:   r.target_system_id   || null,
       target_system_name: r.target_system_name || null,
@@ -202,9 +203,9 @@ document.getElementById('report-select').addEventListener('change', async functi
 
   renderTargetIntel(r);
   const total = r.fleet.reduce((s, f) => s + f.quantity, 0);
-  const defSummary = Object.entries(defLevels).filter(([,v]) => v > 0).map(([k,v]) => `${k.replace(/_/g,' ')} ${v}`).join(', ') || 'no defenses';
+  const defSummary = Object.entries(defLevels).filter(([,v]) => v > 0).map(([k,v]) => `${uiLabel(k)} ${v}`).join('、') || '无防御设施';
   document.getElementById('sim-status').textContent =
-    `Defender filled from report: ${total} ships, ${defSummary}.`;
+    `已从报告填充防守方：${total} 艘舰船，${defSummary}。`;
   if (r.target_system_id) {
     const coords = await browser.runtime.sendMessage({ type: 'GET_SYSTEM_COORDS', ids: [r.target_system_id] });
     const c = coords[r.target_system_id];
@@ -217,6 +218,7 @@ document.getElementById('report-select').addEventListener('change', async functi
 });
 
 const LOOT_FACTOR = 0.5; // assumed share of resources lootable in a raid
+const AMOUNT_LABELS = { none: '无', very_low: '极少', low: '少量', medium: '中等', high: '大量', very_high: '极多' };
 
 function renderTargetIntel(r) {
   const panel = document.getElementById('target-intel');
@@ -240,14 +242,14 @@ function renderTargetIntel(r) {
   for (const [k, v] of Object.entries(r.resources)) {
     if (typeof v === 'number') {
       numericTotal += v;
-      if (v) parts.push(`${k}: ${fmt(v)}`);
+      if (v) parts.push(`${uiLabel(k)}：${fmt(v)}`);
     } else if (v && v !== 'none') {
       qualitative = true;
-      parts.push(`${k}: ${v}`);
+      parts.push(`${uiLabel(k)}：${AMOUNT_LABELS[String(v).toLowerCase().replace(/[\s-]+/g, '_')] || uiLabel(v)}`);
     }
   }
 
-  panel.appendChild(note(`Target resources — ${parts.join(' · ') || 'none reported'}`));
+  panel.appendChild(note(`目标资源 — ${parts.join(' · ') || '报告中未提供'}`));
 
   if (numericTotal > 0) {
     const loot = numericTotal * LOOT_FACTOR;
@@ -256,9 +258,9 @@ function renderTargetIntel(r) {
       const d = shipDefs[key];
       if (d?.cargoCapacity) options.push(`${Math.ceil(loot / d.cargoCapacity)}× ${d.name}`);
     }
-    panel.appendChild(note(`Cargo for ~${LOOT_FACTOR * 100}% loot (${fmt(loot)}): ${options.join(' or ')}`));
+    panel.appendChild(note(`运载约 ${LOOT_FACTOR * 100}% 战利品（${fmt(loot)}）所需舰船：${options.join(' 或 ')}`));
   } else if (qualitative) {
-    panel.appendChild(note('Amounts are qualitative — higher spy power gives numbers and a cargo estimate.'));
+    panel.appendChild(note('报告仅提供资源量级；提高间谍能力后可获得具体数量与货舱估算。'));
   }
 }
 

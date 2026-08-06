@@ -2,7 +2,7 @@
 
 // ── Debris tab ─────────────────────────────────────────────────────────────
 
-import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, getZone, inWindowRange, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, store, windowActive, zeroCell, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, PER_PAGE, RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, computeSeries, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, getZone, inWindowRange, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, store, uiLabel, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartDebris, chartDebrisPeriod;
 
@@ -42,14 +42,14 @@ export function renderDebrisTab() {
   const mineEl = document.getElementById('d-stats-mine');
   mineEl.textContent = '';
   mineEl.append(
-    makeStatCard(`Ore${periodLabel}`, fmt(mine.ore), 'ore'),
-    makeStatCard(`Silicates${periodLabel}`, fmt(mine.silicates), 'silicates'),
-    makeStatCard(`Hydrogen${periodLabel}`, fmt(mine.hydrogen), 'hydrogen'),
+    makeStatCard(`矿石${periodLabel}`, fmt(mine.ore), 'ore'),
+    makeStatCard(`硅酸盐${periodLabel}`, fmt(mine.silicates), 'silicates'),
+    makeStatCard(`氢${periodLabel}`, fmt(mine.hydrogen), 'hydrogen'),
   );
   appendExtraResourceCards(mineEl, mine, periodLabel);
   mineEl.append(
-    makeStatCard(`Runs${periodLabel}`, fmt(filterZone((mode === 'all' && !windowActive()) ? debrisLog() : inWindowRange(debrisLog())).length), 'missions'),
-    makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('debris', mode)), 'hydrogen'),
+    makeStatCard(`回收次数${periodLabel}`, fmt(filterZone((mode === 'all' && !windowActive()) ? debrisLog() : inWindowRange(debrisLog())).length), 'missions'),
+    makeStatCard(`燃料消耗${periodLabel}`, fmt(fuelForMode('debris', mode)), 'hydrogen'),
   );
 
   const lost = store.debris_resources_lost || { destroyed: {}, repair: {} };
@@ -60,7 +60,7 @@ export function renderDebrisTab() {
 
   if (chartDebrisPeriod) chartDebrisPeriod.destroy();
   chartDebrisPeriod = makeResourceLineChart('chart-debris-period', getDebrisSeries(mode),
-    getLabelKey(mode), { field: 'runs', label: 'Runs' });
+    getLabelKey(mode), { field: 'runs', label: '回收次数' });
 
   renderActiveRuns();
   renderCollectionLog();
@@ -69,8 +69,8 @@ export function renderDebrisTab() {
   const genEl = document.getElementById('d-stats-generated');
   genEl.textContent = '';
   genEl.append(
-    makeStatCard('Ore', fmt(gen.ore), 'ore'),
-    makeStatCard('Silicates', fmt(gen.silicates), 'silicates'),
+    makeStatCard('矿石', fmt(gen.ore), 'ore'),
+    makeStatCard('硅酸盐', fmt(gen.silicates), 'silicates'),
   );
   appendExtraResourceCards(genEl, gen, '');
 
@@ -78,7 +78,7 @@ export function renderDebrisTab() {
 
 export function cargoText(r) {
   return ['ore', 'silicates', 'alloys', 'hydrogen']
-    .filter(k => r[k]).map(k => `${k}: ${Number(r[k]).toLocaleString()}`).join(', ') || '—';
+    .filter(k => r[k]).map(k => `${uiLabel(k)}：${Number(r[k]).toLocaleString()}`).join('，') || '—';
 }
 
 export function fleetText(fleet) {
@@ -94,15 +94,15 @@ export function renderActiveRuns() {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 6; td.style.color = '#484f58';
-    td.textContent = 'No debris-collection fleets in flight.';
+    td.textContent = '当前没有航行中的残骸回收舰队。';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
   }
   for (const r of runs) {
     const tr = document.createElement('tr');
     const tdFleet = document.createElement('td'); tdFleet.textContent = fleetText(r.fleet);
-    const tdSys = document.createElement('td'); tdSys.textContent = r.system;
-    const tdStatus = document.createElement('td'); tdStatus.textContent = r.status;
+    const tdSys = document.createElement('td'); tdSys.textContent = uiLabel(r.system);
+    const tdStatus = document.createElement('td'); tdStatus.textContent = uiLabel(r.status);
     const tdCargo = document.createElement('td'); tdCargo.textContent = cargoText(r);
     const tdEta = document.createElement('td');
     tdEta.textContent = r.eta ? new Date(r.eta).toLocaleString() : '—';
@@ -122,7 +122,7 @@ export function renderCollectionLog() {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 12; td.style.color = '#484f58';
-    td.textContent = 'No collections recorded yet — they appear when a collect-debris fleet returns.';
+    td.textContent = '尚无回收记录；残骸回收舰队返航后会显示在这里。';
     tr.appendChild(td); tbody.appendChild(tr);
     return;
   }
@@ -130,7 +130,7 @@ export function renderCollectionLog() {
     const tr = document.createElement('tr');
     const tdWhen = document.createElement('td');
     tdWhen.textContent = new Date(r.collected_at).toLocaleString();
-    const tdSys = document.createElement('td'); tdSys.textContent = r.system;
+    const tdSys = document.createElement('td'); tdSys.textContent = uiLabel(r.system);
     const tdOre = zeroCell(r.ore); tdOre.className = 'ore';
     const tdSil = zeroCell(r.silicates); tdSil.className = 'silicates';
     const tdAl = zeroCell(r.alloys); tdAl.className = 'alloys';

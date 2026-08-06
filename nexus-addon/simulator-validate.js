@@ -2,6 +2,7 @@
 
 import { shipDefs, runSimulations } from './engine.js';
 import { makeStatCard } from './simulator.js';   // circular: function, used only in the handler
+import { uiLabel } from './common.js';
 
 // ── Engine validation against recorded raids ───────────────────────────────
 
@@ -16,17 +17,17 @@ function fleetArrayToMap(arr) {
 }
 
 function fleetLabel(arr) {
-  return (arr || []).map(i => `${i.quantity}× ${i.key.replace(/_/g, ' ')}`).join(', ');
+  return (arr || []).map(i => `${i.quantity}× ${shipDefs[i.key]?.name || uiLabel(i.key)}`).join('、');
 }
 
 document.getElementById('btn-validate').addEventListener('click', async function () {
   this.disabled = true;
-  this.textContent = 'Validating…';
+  this.textContent = '验证中…';
   const tbody = document.getElementById('validation-tbody');
   const summary = document.getElementById('validation-summary');
 
   try {
-    const { pirate_recent_reports } = await browser.storage.local.get('pirate_recent_reports');
+    const { pirate_recent_reports } = await globalThis.nexusStorage.get('pirate_recent_reports');
     const replayable = (pirate_recent_reports || [])
       .filter(r => r.attacker_fleet?.length && r.pirate_fleet?.length)
       .slice(0, 50);
@@ -36,8 +37,8 @@ document.getElementById('btn-validate').addEventListener('click', async function
     document.getElementById('validation-results').style.display = '';
 
     if (!replayable.length) {
-      summary.appendChild(makeStatCard('Replayable raids',
-        '0 — older records lack fleet data; new raids will include it', ''));
+      summary.appendChild(makeStatCard('可重放突袭',
+        '0 — 旧记录缺少舰队数据，新产生的突袭记录将包含这些数据', ''));
       return;
     }
 
@@ -63,10 +64,10 @@ document.getElementById('btn-validate').addEventListener('click', async function
 
       const tr = document.createElement('tr');
       const cells = [
-        new Date(r.created_at).toLocaleDateString(),
+        new Date(r.created_at).toLocaleDateString('zh-CN'),
         fleetLabel(r.attacker_fleet),
         fleetLabel(r.pirate_fleet),
-        (r.outcome || 'unknown').replace(/_/g, ' '),
+        uiLabel(r.outcome || 'unknown'),
         `${(winRate * 100).toFixed(0)}%`,
         String(actualRemoved),
         predictedRemoved.toFixed(1),
@@ -82,13 +83,13 @@ document.getElementById('btn-validate').addEventListener('click', async function
     }
 
     summary.append(
-      makeStatCard('Raids replayed', String(replayable.length), 'missions'),
-      makeStatCard('Outcome accuracy', `${(outcomeHits / replayable.length * 100).toFixed(0)}%`,
+      makeStatCard('已重放突袭', String(replayable.length), 'missions'),
+      makeStatCard('结果准确率', `${(outcomeHits / replayable.length * 100).toFixed(0)}%`,
         outcomeHits === replayable.length ? 'silicates' : ''),
-      makeStatCard('Avg loss error (ships)', (lossErrSum / replayable.length).toFixed(2), ''),
+      makeStatCard('平均损失误差（舰船）', (lossErrSum / replayable.length).toFixed(2), ''),
     );
   } finally {
     this.disabled = false;
-    this.textContent = 'Validate';
+    this.textContent = '验证';
   }
 });

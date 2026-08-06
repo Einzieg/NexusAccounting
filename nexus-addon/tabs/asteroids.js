@@ -8,17 +8,17 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip } from '../common.js';
+import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip, uiLabel } from '../common.js';
 
-const ICON_BASE = 'https://s0.nexuslegacy.space/images/resources/';
+let iconBase = '';
 // asteroid fieldType → resource icon + label
 const FIELD_TYPES = [
-  { type: 'ore', res: 'ore', label: 'ore', color: '#f0883e' },
-  { type: 'gas', res: 'hydrogen', label: 'gas (hydrogen)', color: '#a371f7' },
-  { type: 'ice', res: 'cryo_ice', label: 'ice (cryo-ice)', color: '#a5d6ff' },
-  { type: 'plasma', res: 'plasma_core', label: 'plasma (core)', color: '#ff7b72' },
-  { type: 'quantum', res: 'quantum_dust', label: 'quantum (dust)', color: '#d2a8ff' },
-  { type: 'dark', res: 'dark_matter', label: 'dark (matter)', color: '#6e40c9' },
+  { type: 'ore', res: 'ore', label: '矿石', color: '#f0883e' },
+  { type: 'gas', res: 'hydrogen', label: '气体（氢）', color: '#a371f7' },
+  { type: 'ice', res: 'cryo_ice', label: '冰体（低温冰）', color: '#a5d6ff' },
+  { type: 'plasma', res: 'plasma_core', label: '等离子体（核心）', color: '#ff7b72' },
+  { type: 'quantum', res: 'quantum_dust', label: '量子体（量子尘）', color: '#d2a8ff' },
+  { type: 'dark', res: 'dark_matter', label: '暗物质体', color: '#6e40c9' },
 ];
 const TYPE_COLOR = Object.fromEntries(FIELD_TYPES.map(t => [t.type, t.color]));
 // Ship recommendation per asteroid field type: specialized ship + per-cycle
@@ -27,6 +27,12 @@ const REC_SHIP = {
   ore: ['Mining Vessel', 50], plasma: ['Mining Vessel', 25],
   gas: ['Gas Collector', 17], quantum: ['Gas Collector', 3],
   ice: ['Ice Drill', 25], dark: ['Ice Drill', 3],
+};
+const REC_SHIP_LABELS = {
+  'Mining Vessel': '采矿船',
+  'Gas Collector': '气体采集船',
+  'Ice Drill': '冰层钻探船',
+  Excavator: '挖掘者',
 };
 const REC_CYCLES = 10;   // ships to clear the field in this many mining cycles
 const EXCAVATOR_BONUS = 1.2;   // +20% fleet extraction capacity when an Excavator is present
@@ -75,11 +81,12 @@ async function resolveAllianceTags(names) {
 export async function initAsteroidsTab() {
   if (afInited) return;
   afInited = true;
+  iconBase = `${(await globalThis.nexusStorage.getActiveServer()).origin}/images/resources/`;
   const status = document.getElementById('af-progress');
-  status.textContent = 'Loading…';
+  status.textContent = '正在加载…';
 
   const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
-  if (planets.error) { status.textContent = `Error: ${planets.error}`; afInited = false; return; }
+  if (planets.error) { status.textContent = `错误：${planets.error}`; afInited = false; return; }
   afPlanets = (planets.planets || []).filter(p => p.systemId != null);
 
   const me = await browser.runtime.sendMessage({ type: 'GET_AUTH_ME' });
@@ -111,7 +118,7 @@ export async function initAsteroidsTab() {
 
   await refreshTemplates();
   // Keep the selector in sync with edits made in the Fleets tab.
-  browser.storage.onChanged.addListener((changes, area) => {
+  globalThis.nexusStorage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes.fleet_templates) refreshTemplates();
     // Live search can be stopped from the game-page results window — reflect it.
@@ -164,7 +171,7 @@ export async function initAsteroidsTab() {
     }, 10000);   // catch returning mining fleets without a reload
   }
 
-  status.textContent = 'Pick how many nearest systems to scan, then Scan.';
+  status.textContent = '请选择要扫描的最近星系数量，然后点击“扫描”。';
 }
 
 // Ships stationed on the selected mining planet, shown above the fields table.
@@ -174,7 +181,7 @@ async function updateAfAvail() {
   if (!planetId || !afAllShips.length) { clearAvailStrip(box); return; }
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) { clearAvailStrip(box, av.error); return; }
-  renderAvailStrip(box, afAllShips, av.available, 'No ships on this planet.');
+  renderAvailStrip(box, afAllShips, av.available, '该星球上没有舰船。');
 }
 
 // Galaxy map (all systems with coords + sector id), fetched once and cached.
@@ -215,7 +222,7 @@ function drawTypeInto(boxId, filter, redraw, after) {
   for (const t of FIELD_TYPES) {
     const img = document.createElement('img');
     img.className = 'res-icon' + (filter.has(t.type) ? ' sel' : '');
-    img.src = `${ICON_BASE}${t.res}.webp`;
+    img.src = `${iconBase}${t.res}.webp`;
     img.alt = t.label;
     img.title = t.label;
     img.addEventListener('click', () => {
@@ -235,7 +242,7 @@ function drawZoneInto(boxId, filter, redraw, after) {
     const b = document.createElement('button');
     const on = filter.has(z);
     b.type = 'button';
-    b.textContent = z;
+    b.textContent = uiLabel(z);
     b.style.cssText = `padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem;
       border:1px solid ${ZONE_COLOR[z]}; text-transform:capitalize;
       color:${on ? '#0d1117' : ZONE_COLOR[z]}; background:${on ? ZONE_COLOR[z] : 'transparent'};`;
@@ -277,14 +284,14 @@ function saveLiveSearchIfOn() { if (lsRunning) saveLiveSearch(); }
 function setLsButton() {
   const btn = document.getElementById('ls-search');
   const status = document.getElementById('ls-status');
-  btn.textContent = lsRunning ? 'Stop Live Search' : 'Live Search';
+  btn.textContent = lsRunning ? '停止实时搜索' : '实时搜索';
   btn.style.cssText = lsRunning ? 'background:#da3633; border:1px solid #f85149; color:#fff;' : '';
   if (!lsRunning) { status.textContent = ''; status.style.color = '#8b949e'; return; }
   if (!lsTypeFilter.size) {
-    status.textContent = '⚠ No resource type selected — every field type will match.';
+    status.textContent = '⚠ 未选择资源类型，所有小行星带类型都会匹配。';
     status.style.color = '#e3b341';
   } else {
-    status.textContent = 'Scanning every 5 min in the background — notifies on new matches.';
+    status.textContent = '每 5 分钟在后台扫描一次，发现新匹配项时会发送通知。';
     status.style.color = '#8b949e';
   }
 }
@@ -297,7 +304,7 @@ async function toggleLiveSearch() {
 
 // Restore the live-search controls from the persisted config.
 async function loadLiveSearch() {
-  const { live_search: cfg } = await browser.storage.local.get('live_search');
+  const { live_search: cfg } = await globalThis.nexusStorage.get('live_search');
   if (cfg) {
     if (cfg.planetId != null) document.getElementById('ls-planet').value = cfg.planetId;
     document.getElementById('ls-mult-min').value = cfg.multMin ?? '';
@@ -323,11 +330,11 @@ async function scan() {
   if (!p) return;
   const count = Math.max(1, Math.min(500, parseInt(document.getElementById('af-near').value, 10) || 25));
 
-  status.textContent = 'Loading galaxy map…';
+  status.textContent = '正在加载星系地图…';
   let map;
-  try { map = await loadMap(); } catch (e) { status.textContent = `Error: ${e.message}`; return; }
+  try { map = await loadMap(); } catch (e) { status.textContent = `错误：${e.message}`; return; }
   const src = map.byId[p.systemId];
-  if (!src) { status.textContent = 'Source system not on the map.'; return; }
+  if (!src) { status.textContent = '地图上找不到出发星系。'; return; }
   afRefMS = { x: src.x, y: src.y };
 
   // The N nearest explored systems (asteroid fields need at least partial vis).
@@ -337,13 +344,13 @@ async function scan() {
     .sort((a, b) => a.d - b.d)
     .slice(0, count)
     .map(o => o.s);
-  if (!targets.length) { status.textContent = 'No explored systems nearby.'; return; }
+  if (!targets.length) { status.textContent = '附近没有已探索星系。'; return; }
 
-  const { planet_scan_cache } = await browser.storage.local.get('planet_scan_cache');
+  const { planet_scan_cache } = await globalThis.nexusStorage.get('planet_scan_cache');
   const cache = planet_scan_cache || {};
 
   afRunning = true;
-  btn.textContent = 'Stop';
+  btn.textContent = '停止';
   afFields = [];
   afPage = 1;
   let scanned = 0, errors = 0;
@@ -378,14 +385,14 @@ async function scan() {
       }
       scanned++;
       if (scanned % 10 === 0) {
-        status.textContent = `Scanning… ${scanned}/${targets.length} systems, ${afFields.length} fields.`;
+        status.textContent = `正在扫描… ${scanned}/${targets.length} 个星系，发现 ${afFields.length} 个小行星带。`;
         renderAsteroids();
       }
       await new Promise(r => setTimeout(r, 80)); // be polite to the game API
     }
   } finally {
     afRunning = false;
-    btn.textContent = 'Scan';
+    btn.textContent = '扫描';
   }
 
   // Persist the shared scan cache, oldest entries dropped first.
@@ -395,12 +402,12 @@ async function scan() {
       .slice(0, ids.length - SCAN_CACHE_MAX)
       .forEach(id => delete cache[id]);
   }
-  await browser.storage.local.set({ planet_scan_cache: cache });
+  await globalThis.nexusStorage.set({ planet_scan_cache: cache });
 
   await resolveAllianceTags(afFields.filter(f => f.ownerName).map(f => f.ownerName));
 
-  status.textContent = `Done: ${afFields.length} fields in ${scanned} systems` +
-    (errors ? ` · ${errors} skipped (errors)` : '') + '.';
+  status.textContent = `完成：在 ${scanned} 个星系中发现 ${afFields.length} 个小行星带` +
+    (errors ? ` · 因错误跳过 ${errors} 个` : '') + '。';
   renderAsteroids();
 }
 
@@ -431,7 +438,7 @@ async function refreshTemplates() {
   sel.textContent = '';
   if (!afTemplates.length) {
     const o = document.createElement('option');
-    o.value = ''; o.textContent = '— none (create one in Fleets) —';
+    o.value = ''; o.textContent = '— 无（请在“舰队模板”中创建）—';
     sel.appendChild(o);
     return;
   }
@@ -450,11 +457,11 @@ async function sendMineMission(f) {
   const planetId = Number(document.getElementById('af-planet').value);
   const planet = afPlanets.find(p => p.id === planetId);
   const status = document.getElementById('af-progress');
-  if (!planetId) { alert('Pick a source planet first.'); return; }
+  if (!planetId) { alert('请先选择出发星球。'); return; }
 
-  status.textContent = 'Checking fleet…';
+  status.textContent = '正在检查舰队…';
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { status.textContent = `Error: ${av.error}`; return; }
+  if (av.error) { status.textContent = `错误：${av.error}`; return; }
   const avail = av.available || {};
 
   // Seed the editor straight from the selected template — the "Optimise Mining
@@ -472,13 +479,13 @@ async function sendMineMission(f) {
   const miningShipIds = new Set(afAllShips.filter(d => MINING_SHIPS.has(d.name)).map(d => d.shipDefId));
 
   const ships = await editFleetDialog({
-    title: `Mine ${f.name}`,
-    subtitle: `To: ${f.name} (${f.system})\nFrom: ${planet ? planet.name : planetId}`,
+    title: `开采 ${f.name}`,
+    subtitle: `目标：${f.name}（${f.system}）\n出发点：${planet ? planet.name : planetId}`,
     avail, seed, recShips, miningShipIds,
   });
   if (!ships || !ships.length) return;   // cancelled or emptied
 
-  status.textContent = `Sending to ${f.name}…`;
+  status.textContent = `正在派往 ${f.name}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_MINE',
     sourcePlanetId: planetId,
@@ -486,7 +493,7 @@ async function sendMineMission(f) {
     ships,
     miningDuration: MINING_DURATION,
   });
-  status.textContent = res.error ? `Send failed: ${res.error}` : `Fleet sent to ${f.name} ✓`;
+  status.textContent = res.error ? `派出失败：${res.error}` : `舰队已派往 ${f.name} ✓`;
   if (!res.error) {
     afMiningFieldIds.add(f.fieldId);   // optimistic — GET_MISSIONS can lag right after the send
     renderAsteroids();
@@ -499,7 +506,7 @@ async function sendMineMission(f) {
 async function refreshSlots() {
   const mi = await browser.runtime.sendMessage({ type: 'GET_MISSIONS' });
   if (mi.maxFleetSlots != null) {
-    document.getElementById('af-slots').textContent = `${(mi.missions || []).length}/${mi.maxFleetSlots} fleet slots`;
+    document.getElementById('af-slots').textContent = `舰队槽位 ${(mi.missions || []).length}/${mi.maxFleetSlots}`;
   }
   afMiningFieldIds = new Set(
     (mi.missions || []).filter(m => m.missionType === 'mine' && m.targetFieldId != null).map(m => m.targetFieldId));
@@ -556,7 +563,7 @@ export function renderAsteroids() {
 
   const totalPages = Math.max(1, Math.ceil(rows.length / AF_PER_PAGE));
   afPage = Math.min(Math.max(1, afPage), totalPages);
-  document.getElementById('af-page-info').textContent = `Page ${afPage} / ${totalPages}`;
+  document.getElementById('af-page-info').textContent = `第 ${afPage} / ${totalPages} 页`;
   document.getElementById('af-btn-prev').disabled = afPage <= 1;
   document.getElementById('af-btn-next').disabled = afPage >= totalPages;
   const pageRows = rows.slice((afPage - 1) * AF_PER_PAGE, afPage * AF_PER_PAGE);
@@ -571,7 +578,7 @@ export function renderAsteroids() {
     const sendTd = document.createElement('td');
     const ship = document.createElement('span');
     ship.textContent = '🚀';
-    ship.title = 'Send mining fleet here';
+    ship.title = '向此处派出采矿舰队';
     ship.style.cssText = 'cursor:pointer;';
     ship.addEventListener('click', () => sendMineMission(f));
     sendTd.appendChild(ship);
@@ -582,15 +589,15 @@ export function renderAsteroids() {
     const tag = f.ownerName ? allianceTagCache[f.ownerName] : null;
     const owner = f.ownerName ? (tag ? `${f.ownerName} [${tag}]` : f.ownerName) : '—';
     const cells = [
-      f.system, String(f.type).replace(/_/g, ' '),
+      f.system, FIELD_TYPES.find(t => t.type === f.type)?.label || uiLabel(f.type),
       f.mult == null ? '—' : `×${f.mult}`,
       content,
       f.leftPct == null ? '—' : `${f.leftPct}%`,
-      f.zone,
+      uiLabel(f.zone),
       owner,
       f.distance == null ? '—' : String(f.distance),
       '…',   // fuel cost, filled async
-      f.rec ? `${f.rec.count}× ${f.rec.name}` : '—',
+      f.rec ? `${f.rec.count}× ${REC_SHIP_LABELS[f.rec.name] || f.rec.name}` : '—',
     ];
     cells.forEach((v, i) => {
       const td = document.createElement('td');
@@ -603,7 +610,7 @@ export function renderAsteroids() {
     });
     tbody.appendChild(tr);
   }
-  document.getElementById('af-count').textContent = `${rows.length} fields`;
+  document.getElementById('af-count').textContent = `${rows.length} 个小行星带`;
   computeFuel();
 }
 
@@ -620,7 +627,7 @@ async function computeFuel() {
     .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
     .filter(s => s.quantity > 0);
   if (!ships.length) {
-    cells().forEach(c => { c.textContent = '—'; c.title = tpl ? 'Template has no ships' : 'No template selected'; });
+    cells().forEach(c => { c.textContent = '—'; c.title = tpl ? '模板中没有舰船' : '未选择模板'; });
     return;
   }
   for (const tr of document.querySelectorAll('#af-results-tbody tr')) {
@@ -633,6 +640,6 @@ async function computeFuel() {
     if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? 'Out of range' : `distance ${est.distance.toFixed(1)} ly`;
+    cell.title = est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`;
   }
 }

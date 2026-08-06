@@ -21,6 +21,12 @@ h1 { font-size: 1.4rem; margin-bottom: 4px; color: #58a6ff; }
 }
 .status-bar button:hover { background: #30363d; }
 .status-bar button:disabled { opacity: 0.5; cursor: default; }
+.status-bar .server-picker { display: inline-flex; align-items: center; gap: 6px; }
+.status-bar select {
+  background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+  padding: 3px 8px; border-radius: 6px; font-size: 0.75rem;
+}
+.status-bar select:disabled { opacity: 0.5; }
 
 .section-label {
   font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;

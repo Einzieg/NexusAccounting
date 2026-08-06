@@ -1,6 +1,6 @@
 // Pirates tab.
 
-import { EXTRA_RES_KEYS_UI, PER_PAGE, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, store, windowActive, zoneCell } from '../common.js';
+import { EXTRA_RES_KEYS_UI, PER_PAGE, SERIES_GETTERS, appendExtraResourceCards, applySort, attachSortable, computeResourcesLost, computeSeries, emptyResources, filterZone, fmt, fuelForMode, getLabelKey, getMode, isUnfiltered, makeResourceLineChart, makeStatCard, periodLabelFor, recordsForMode, renderLostCards, renderNetCards, store, uiLabel, windowActive, zoneCell } from '../common.js';
 
 export let chartPirateLoot, chartPirateOutcomes;
 
@@ -76,20 +76,20 @@ export function renderPiratesTab() {
   if (!store.pirate_totals || !store.pirate_totals.raids) {
     const p = document.createElement('p');
     p.style.cssText = 'color:#484f58;padding:8px 0';
-    p.textContent = 'No pirate raids recorded yet — click Scrape Now after raiding a camp.';
+    p.textContent = '尚未记录海盗突袭，请在袭击营地后点击“立即同步”。';
     collected.appendChild(p);
   } else {
     collected.append(
-      makeStatCard(`Ore${periodLabel}`,       fmt(t.ore),       'ore'),
-      makeStatCard(`Silicates${periodLabel}`, fmt(t.silicates), 'silicates'),
-      makeStatCard(`Hydrogen${periodLabel}`,  fmt(t.hydrogen),  'hydrogen'),
+      makeStatCard(`矿石${periodLabel}`,       fmt(t.ore),       'ore'),
+      makeStatCard(`硅酸盐${periodLabel}`,     fmt(t.silicates), 'silicates'),
+      makeStatCard(`氢${periodLabel}`,         fmt(t.hydrogen),  'hydrogen'),
     );
     appendExtraResourceCards(collected, t, periodLabel);
     collected.append(
-      makeStatCard(`Raids${periodLabel}`,     fmt(t.raids),     'missions'),
-      makeStatCard(`Ships destroyed${periodLabel}`, fmt(t.ships_destroyed), '', 'color:#ff7b72'),
-      makeStatCard(`Pirates destroyed${periodLabel}`, fmt(t.pirates_destroyed), '', 'color:#56d364'),
-      makeStatCard(`Fuel spent${periodLabel}`, fmt(fuelForMode('pirate', getMode())), 'hydrogen'),
+      makeStatCard(`突袭次数${periodLabel}`,   fmt(t.raids),     'missions'),
+      makeStatCard(`摧毁的己方舰船${periodLabel}`, fmt(t.ships_destroyed), '', 'color:#ff7b72'),
+      makeStatCard(`摧毁的海盗舰船${periodLabel}`, fmt(t.pirates_destroyed), '', 'color:#56d364'),
+      makeStatCard(`燃料消耗${periodLabel}`, fmt(fuelForMode('pirate', getMode())), 'hydrogen'),
     );
   }
 
@@ -99,9 +99,9 @@ export function renderPiratesTab() {
   const debrisEl = document.getElementById('p-stats-debris');
   debrisEl.textContent = '';
   debrisEl.append(
-    makeStatCard(`Debris ore${periodLabel}`,       fmt(debris.ore),       'ore'),
-    makeStatCard(`Debris alloys${periodLabel}`,    fmt(debris.alloys),    'alloys'),
-    makeStatCard(`Debris silicates${periodLabel}`, fmt(debris.silicates), 'silicates'),
+    makeStatCard(`残骸矿石${periodLabel}`,       fmt(debris.ore),       'ore'),
+    makeStatCard(`残骸合金${periodLabel}`,       fmt(debris.alloys),    'alloys'),
+    makeStatCard(`残骸硅酸盐${periodLabel}`,     fmt(debris.silicates), 'silicates'),
   );
 
   renderPirateLootChart(series, labelKey);
@@ -111,14 +111,14 @@ export function renderPiratesTab() {
 
 export function renderPirateLootChart(series, labelKey) {
   if (chartPirateLoot) chartPirateLoot.destroy();
-  chartPirateLoot = makeResourceLineChart('chart-pirate-loot', series, labelKey, { field: 'raids', label: 'Raids' });
+  chartPirateLoot = makeResourceLineChart('chart-pirate-loot', series, labelKey, { field: 'raids', label: '突袭次数' });
 }
 
 export function renderPirateOutcomesChart(outcomes) {
   const total = outcomes.reduce((s, o) => s + o.count, 0);
   const labels = outcomes.map(o => {
     const pct = total ? (o.count / total * 100).toFixed(1) : 0;
-    return `${o.outcome.replace(/_/g, ' ')} — ${o.count} (${pct}%)`;
+    return `${uiLabel(o.outcome)} — ${o.count}（${pct}%）`;
   });
   const colors = ['#56d364', '#ff7b72', '#e3b341', '#58a6ff', '#8b949e'];
   if (chartPirateOutcomes) chartPirateOutcomes.destroy();
@@ -133,7 +133,7 @@ export function renderPirateOutcomesChart(outcomes) {
           callbacks: {
             label: ctx => {
               const pct = total ? (ctx.parsed / total * 100).toFixed(1) : 0;
-              return ` ${ctx.parsed} raids (${pct}%)`;
+              return ` ${ctx.parsed} 次突袭（${pct}%）`;
             },
           },
         },
@@ -148,7 +148,7 @@ attachSortable('p-reports-head', pirateSort, () => { pirateCurrentPage = 1; rend
 export function renderPirateTable() {
   const allReports = applySort('p-reports-head', filterZone(store.pirate_recent_reports || []), pirateSort);
   const totalPages = Math.ceil(allReports.length / PER_PAGE);
-  document.getElementById('p-page-info').textContent = `Page ${pirateCurrentPage} / ${Math.max(1, totalPages)} (${allReports.length} total)`;
+  document.getElementById('p-page-info').textContent = `第 ${pirateCurrentPage} / ${Math.max(1, totalPages)} 页（共 ${allReports.length} 条）`;
   document.getElementById('p-btn-prev').disabled = pirateCurrentPage <= 1;
   document.getElementById('p-btn-next').disabled = pirateCurrentPage >= totalPages;
 
@@ -181,7 +181,7 @@ export function renderPirateTable() {
     const tdOutcome = document.createElement('td');
     const badge = document.createElement('span');
     badge.className = `badge ${r.outcome}`;
-    badge.textContent = (r.outcome || 'unknown').replace(/_/g, ' ');
+    badge.textContent = uiLabel(r.outcome || 'unknown');
     tdOutcome.appendChild(badge);
 
     const tdOre = zeroTd(r.ore);       tdOre.className = 'ore';

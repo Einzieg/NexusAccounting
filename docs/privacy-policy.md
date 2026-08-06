@@ -1,6 +1,6 @@
 # Privacy Policy — Nexus Accounting
 
-**Last updated: 2026-06-22**
+**Last updated: 2026-08-06**
 
 Nexus Accounting is a browser extension that reads your Nexus Legacy game data and displays it locally as a personal accounting dashboard. This policy describes exactly what data the extension accesses, how it is used, and where it goes.
 
@@ -8,7 +8,7 @@ Nexus Accounting is a browser extension that reads your Nexus Legacy game data a
 
 ## 1. Data collected
 
-The extension reads the following data from the Nexus Legacy game API (`s0.nexuslegacy.space`) on your behalf:
+The extension reads the following data from the selected Nexus Legacy game API (`s0.nexuslegacy.space` or `nf.nexuslegacy.space`) on your behalf:
 
 | Category | Examples |
 |---|---|
@@ -39,7 +39,7 @@ No data is used for advertising, profiling, or any purpose unrelated to displayi
 
 ## 3. Where the data is stored
 
-All data is stored **locally on your device only**, in the browser's `storage.local` area (isolated to this extension). Nothing is uploaded to any server operated by the extension author.
+All data is stored **locally on your device only**, in the browser's `storage.local` area (isolated to this extension and separated by selected game server). Nothing is uploaded to any server operated by the extension author.
 
 The extension also writes automatic backup files to your `Downloads/NexusAccounting/` folder before destructive operations (reset, import, schema migrations) and as a weekly auto-backup. These files are plain JSON and remain on your device under your control.
 
@@ -62,7 +62,7 @@ The extension makes one type of write call to the game API: posting a research j
 Data accumulates in local storage as long as the extension is installed. You can:
 
 - **Export** a full JSON backup at any time from the dashboard.
-- **Reset** all stored data from the dashboard (a backup is created first).
+- **Reset** the selected server's stored data from the dashboard (a backup is created first).
 - **Uninstall** the extension — the browser removes all `storage.local` data on uninstall.
 
 Backup files in your Downloads folder are not deleted automatically; you can delete them manually at any time.

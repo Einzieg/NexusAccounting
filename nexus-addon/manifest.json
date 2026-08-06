@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Nexus Accounting",
-  "version": "1.7.6",
-  "description": "Tracks Nexus Legacy survey and pirate data — aggregates resources collected and ships lost, with daily and hourly breakdowns.",
+  "name": "Nexus Accounting 助手",
+  "version": "1.8.1",
+  "description": "适用于 Nexus Legacy NX-S0 与 NX-NF 的数据统计、舰队规划和游戏内辅助工具。",
   "author": "Verrok",
   "homepage_url": "https://github.com/Verroq/NexusAccounting",
   "permissions": [
@@ -25,60 +25,65 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Nexus Accounting",
+    "default_title": "Nexus Accounting 助手",
     "default_icon": {
       "128": "icons/icon128.png"
     }
   },
   "content_scripts": [
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
+      "js": ["server-storage.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["sidebar-inject.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["galaxy-fetch-hook.js"],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["galaxy-fields.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["empire-view.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["guide-view.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["logistics-view.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["upgrade-queue.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["building-upgrade.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["tech-upgrade.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://s0.nexuslegacy.space/*"],
+      "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
       "js": ["ship-upgrade.js"],
       "run_at": "document_idle"
     }
@@ -94,6 +99,7 @@
       ],
       "matches": [
         "https://s0.nexuslegacy.space/*",
+        "https://nf.nexuslegacy.space/*",
         "https://nexuslegacy.space/*"
       ]
     }
