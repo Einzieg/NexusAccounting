@@ -28,13 +28,13 @@
 
 ## 工作原理与隐私
 
-助手从所选服务器的浏览器 Cookie 中读取 `nexus_token`，因此无需再次输入账号或密码，但必须先登录对应的 Nexus Legacy 服务器。
+助手通过所选服务器中已登录的游戏标签页发起同源 API 请求。浏览器会自动附带 HttpOnly 会话 Cookie；助手本身不会读取、保存或转发 Cookie 值，因此无需再次输入账号或密码。同步期间必须保持对应的游戏标签页打开。
 
 所有采集结果都保存在浏览器的 `storage.local` 中，不会上传到其他服务。扩展更新前会自动将本地数据备份到下载目录。
 
 ## 使用方法
 
-1. 登录 [第 0 赛季](https://s0.nexuslegacy.space/) 或 [新边疆](https://nf.nexuslegacy.space/)。
+1. 登录 [第 0 赛季](https://s0.nexuslegacy.space/) 或 [新边疆](https://nf.nexuslegacy.space/)，并保持该游戏标签页打开。
 2. 点击浏览器工具栏中的“Nexus Accounting 助手”图标打开仪表盘。
 3. 确认右上角选择了正确的服务器。
 4. 点击“立即采集”，或等待每 15 分钟一次的自动采集。

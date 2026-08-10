@@ -88,10 +88,10 @@ async function stopLiveSearch() {
 }
 
 // Sector systems with a cross-scan TTL cache (names/zones change rarely).
-async function lsSectorSystems(sectorId, token) {
+async function lsSectorSystems(sectorId) {
   const hit = lsSectorCache.get(sectorId);
   if (hit && Date.now() - hit.at < LS_SECTOR_TTL) return hit.systems;
-  const systems = (await apiFetch(`/api/galaxy/sectors/${sectorId}/systems`, token)).systems || [];
+  const systems = (await apiFetch(`/api/galaxy/sectors/${sectorId}/systems`)).systems || [];
   lsSectorCache.set(sectorId, { at: Date.now(), systems });
   return systems;
 }
@@ -109,14 +109,12 @@ function fieldMatches(f, cfg) {
 async function liveSearchScan() {
   const { live_search: cfg } = await globalThis.nexusStorage.get('live_search');
   if (!cfg || !cfg.enabled || cfg.planetId == null) return;
-  const token = await getToken();
-  if (!token) return;
 
   try {
     const planets = (await getPlanets()).planets || [];
     const planet = planets.find(p => p.id === cfg.planetId);
     if (!planet || planet.systemId == null) return;
-    const map = await apiFetch('/api/galaxy/map', token);
+    const map = await apiFetch('/api/galaxy/map');
     const src = (map.systems || []).find(s => s.id === planet.systemId);
     if (!src) return;
 
@@ -132,12 +130,12 @@ async function liveSearchScan() {
     let errStreak = 0;
     for (const sys of targets) {
       let sector;
-      try { sector = await lsSectorSystems(sys.sectorId, token); }
+      try { sector = await lsSectorSystems(sys.sectorId); }
       catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
       const meta = sector.find(s => s.id === sys.id);
       if (!meta || !meta.planetCount) { errStreak = 0; continue; }
       let data;
-      try { data = await apiFetch(`/api/galaxy/systems/${sys.id}/planets`, token); }
+      try { data = await apiFetch(`/api/galaxy/systems/${sys.id}/planets`); }
       catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
       errStreak = 0;
       for (const f of (data.asteroidFields || [])) {
@@ -231,8 +229,7 @@ function handleMessage(msg) {
   if (msg.type === 'GET_PLANET_SHIPS') return getPlanetShips(msg.planetId);
   if (msg.type === 'GET_MISSIONS') return apiGet('/api/fleet/missions');
   if (msg.type === 'GET_FUEL_ESTIMATE') {
-    // POST: routed through the game tab (same-origin) — a Bearer POST from the
-    // extension carries an Origin header the server 500s on.
+    // POST through the same-origin game-tab bridge used by authenticated reads.
     return gamePost('/api/fleet/fuel-estimate', msg.body).then(r => (r && r.ok) ? r.data : r);
   }
   if (msg.type === 'GET_SURVEY_COOLDOWNS') return apiGet('/api/fleet/survey-cooldowns');
@@ -301,25 +298,14 @@ function handleMessage(msg) {
 // dashboard reflects the new active research.
 async function startResearch(researchId, planetId, useFragments = false) {
   const server = await gameServer();
-  const token = await getToken(server);
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   if (researchId == null || planetId == null) return { error: '缺少研究或星球 ID。' };
   try {
     const body = { planetId };
     if (useFragments) body.useFragments = true;
-    const r = await fetch(`${server.origin}/api/research/${researchId}/start`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) {
-      let m = `${r.status}`;
-      try { const j = await r.json(); m = j.message || j.error || m; } catch { /* non-JSON */ }
-      return { error: `启动失败：${m}` };
-    }
-    const data = await r.json().catch(() => ({}));
+    const r = await requestFromGameTab(`/api/research/${researchId}/start`, { method: 'POST', body, server });
+    if (!r?.ok) return { error: `启动失败：${r?.error || r?.status || '未知错误'}` };
     await scrape();   // pick up the new active research
-    return { ok: true, data };
+    return { ok: true, data: r.data || {} };
   } catch (e) {
     return { error: e.message };
   }
@@ -346,10 +332,8 @@ function findResearchLab(resp) {
 // host planet's build-speed), the count of planets (= parallel research slots),
 // and any in-progress lab upgrade end time.
 async function getResources() {
-  const token = await getToken();
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
-    const data = await apiFetch('/api/planets', token);
+    const data = await apiFetch('/api/planets');
     const planets = data.planets || [];
     const keys = ['ore', 'silicates', 'hydrogen', 'alloys',
       'oreRate', 'silicatesRate', 'hydrogenRate', 'alloysRate'];
@@ -357,7 +341,7 @@ async function getResources() {
     let labLevel = 0, labDef = null, buildSpeedMult = 1, labUpgradeEndsAt = null;
     const researchPlanets = [];   // { id, name, mult } — one research slot each
     for (const p of planets) {
-      const d = await apiFetch(`/api/planets/${p.id}`, token);
+      const d = await apiFetch(`/api/planets/${p.id}`);
       const pl = d.planet || d;
       for (const k of keys) tot[k] += pl[k] || 0;
       const lab = findResearchLab(d);
@@ -369,7 +353,7 @@ async function getResources() {
       }
       // Research speed is per-planet; actual time = nextResearchTime × this mult.
       try {
-        const r = await apiFetch(`/api/research?planetId=${p.id}`, token);
+        const r = await apiFetch(`/api/research?planetId=${p.id}`);
         researchPlanets.push({ id: p.id, name: p.name || `星球 #${p.id}`, mult: r.researchSpeedMult || 1 });
       } catch { /* skip this planet's slot */ }
     }
@@ -389,10 +373,8 @@ async function getResources() {
 // Your alliance tag + member ids, so the finder can flag alliance-owned
 // planets it scans.
 async function getAlliance() {
-  const token = await getToken();
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
-    const data = await apiFetch('/api/alliances/my', token);
+    const data = await apiFetch('/api/alliances/my');
     const a = data.alliance || {};
     const members = a.members || [];
     return {
@@ -431,22 +413,11 @@ async function getPlayerAllianceTag(name) {
   return { tag: e ? (e.allianceTag || null) : null };
 }
 
-function jwtRace(token) {
-  try {
-    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(payload)).race ?? null;
-  } catch {
-    return null;
-  }
-}
-
 // All open orders from a paginated orders endpoint (public market or alliance
 // trade), across every page.
 async function getOrders(path) {
-  const token = await getToken();
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
-    const first = await apiFetch(`${path}?page=1&limit=100`, token);
+    const first = await apiFetch(`${path}?page=1&limit=100`);
     const limit = first.pagination?.limit || 100;        // server may cap below 100
     const total = first.pagination?.total ?? (first.orders || []).length;
     const orders = [...(first.orders || [])];
@@ -454,7 +425,7 @@ async function getOrders(path) {
     if (pages > 1) {
       const rest = await Promise.all(
         Array.from({ length: pages - 1 }, (_, i) =>
-          apiFetch(`${path}?page=${i + 2}&limit=${limit}`, token)
+          apiFetch(`${path}?page=${i + 2}&limit=${limit}`)
             .then(d => d.orders || []).catch(() => [])));
       for (const o of rest) orders.push(...o);
     }
@@ -464,69 +435,34 @@ async function getOrders(path) {
   }
 }
 
-// Authenticated GET for dashboard pages (they have no cookie access of their own).
+// Authenticated GET for dashboard pages, routed through the logged-in game tab.
 async function apiGet(path) {
-  const token = await getToken();
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
-    return await apiFetch(path, token);
+    return await apiFetch(path);
   } catch (err) {
     return { error: err.message };
   }
 }
 
-// ── Auth ───────────────────────────────────────────────────────────────────
-
-// Find the nexus_token cookie. It can live outside the default store — a
-// Firefox container tab, a private window, or as a partitioned (CHIPS)
-// cookie — so fall back to searching every cookie store domain-wide.
-async function getToken(server = null) {
-  server ||= await gameServer();
-  const NAME = 'nexus_token';
-  const urls = [server.origin, 'https://nexuslegacy.space'];
-
-  const lookup = async (storeId) => {
-    const store = storeId ? { storeId } : {};
-    for (const url of urls) {
-      try {
-        const c = await browser.cookies.get({ url, name: NAME, ...store });
-        if (c?.value) return c.value;
-      } catch { /* store may not support get */ }
-    }
-    try {
-      const all = await browser.cookies.getAll({ domain: 'nexuslegacy.space', name: NAME, ...store });
-      const matching = (all || []).filter(c => {
-        const domain = String(c.domain || '').replace(/^\./, '').toLowerCase();
-        return domain === server.hostname || domain === 'nexuslegacy.space';
-      });
-      const hit = matching.find(c => String(c.domain || '').replace(/^\./, '').toLowerCase() === server.hostname && c.value)
-        || matching.find(c => c.value);
-      if (hit) return hit.value;
-    } catch { /* ignore */ }
-    return null;
-  };
-
-  const direct = await lookup(null);
-  if (direct) return direct;
-
-  let storeIds = [];
-  try {
-    const stores = await browser.cookies.getAllCookieStores();
-    storeIds = (stores || []).map(s => s.id);
-    for (const s of (stores || [])) {
-      const v = await lookup(s.id);
-      if (v) return v;
-    }
-  } catch (e) {
-    console.warn('[NexusAccounting] getAllCookieStores failed:', e.message);
-  }
-
-  console.warn(`[NexusAccounting] nexus_token not found. Checked default + stores: [${storeIds.join(', ')}]. ` +
-    `Open ${server.id} (logged in) in a normal tab, or check the cookie exists on ${server.hostname}.`);
-  return null;
-}
-
 // ── API ────────────────────────────────────────────────────────────────────
+
+// The game now authenticates API calls with an HttpOnly session cookie rather
+// than the old nexus_token Bearer header. Run requests in a game content script
+// so they are same-origin and the browser attaches that cookie itself.
+async function requestFromGameTab(path, { method = 'GET', body, server = null } = {}) {
+  server ||= await gameServer();
+  const tabs = await browser.tabs.query({ url: `${server.origin}/*` });
+  if (!tabs.length) {
+    throw new Error(`请先登录并保持${server.name}（${server.id}）游戏标签页打开。`);
+  }
+  try {
+    const response = await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method, path, body });
+    if (!response) throw new Error('游戏标签页未返回响应，请刷新该页面后重试。');
+    return response;
+  } catch (error) {
+    throw new Error(`无法通过 ${server.id} 游戏标签页请求 API：${error.message}`, { cause: error });
+  }
+}
 
 // Proactive rate-limit throttle. The server advertises its budget on every
 // response (`RateLimit-Remaining` / `RateLimit-Reset`, policy 400/60s). Track the
@@ -537,9 +473,9 @@ const RL_MIN_REMAINING = 20;     // headroom to keep under the limit
 let rlRemaining = Infinity;      // last-seen RateLimit-Remaining
 let rlResetAt = 0;               // epoch ms when the current window resets
 
-function updateRateLimit(headers) {
-  const rem = parseInt(headers.get('ratelimit-remaining'), 10);
-  const reset = parseFloat(headers.get('ratelimit-reset'));   // seconds until reset
+function updateRateLimit(response) {
+  const rem = parseInt(response?.rateLimitRemaining, 10);
+  const reset = parseFloat(response?.rateLimitReset);   // seconds until reset
   if (Number.isFinite(rem)) rlRemaining = rem;                // authoritative — corrects drift
   if (Number.isFinite(reset)) rlResetAt = Date.now() + reset * 1000;
 }
@@ -554,35 +490,33 @@ async function rateLimitGate() {
   rlRemaining--;
 }
 
-async function apiFetch(path, token, server = null) {
+async function apiFetch(path, server = null) {
   server ||= await gameServer();
   // Retry on 429 (rate limit), honouring Retry-After, then exponential backoff.
   for (let attempt = 0; ; attempt++) {
     await rateLimitGate();
     let r;
     try {
-      r = await fetch(`${server.origin}${path}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      r = await requestFromGameTab(path, { server });
     } catch (e) {
-      throw new Error(`API ${path} → ${e.message}`, { cause: e });   // network/CORS/blocked
+      throw new Error(`API ${path} → ${e.message}`, { cause: e });
     }
-    updateRateLimit(r.headers);
+    updateRateLimit(r);
     if (r.status === 429 && attempt < 4) {
-      const ra = parseFloat(r.headers.get('Retry-After'));
+      const ra = parseFloat(r.retryAfter);
       await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
       continue;
     }
-    if (!r.ok) throw new Error(`API ${path} → ${r.status}`);
-    return r.json();
+    if (!r.ok) throw new Error(`API ${path} → ${r.status || r.error || '请求失败'}`);
+    return r.data || {};
   }
 }
 
 // Home planet id, discovered once via /api/planets and cached.
-async function getHomePlanetId(token) {
+async function getHomePlanetId() {
   const { planet_id } = await globalThis.nexusStorage.get('planet_id');
   if (planet_id) return planet_id;
-  const data = await apiFetch('/api/planets', token);
+  const data = await apiFetch('/api/planets');
   const planets = data.planets || [];
   const home = planets.find(p => p.isHomeworld) || planets[0];
   if (!home) throw new Error('该账号下未找到星球');
@@ -651,10 +585,8 @@ async function apiMissionFuel(m) {
 
 // Current stationed fleet as { shipKey: usableQuantity } — for the simulator.
 async function getPlanets() {
-  const token = await getToken();
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
-    const data = await apiFetch('/api/planets', token);
+    const data = await apiFetch('/api/planets');
     const planets = (data.planets || []).map(p => ({
       id: p.id,
       name: p.name || `星球 ${p.id}`,
@@ -669,19 +601,17 @@ async function getPlanets() {
 }
 
 async function getFleet(planetId) {
-  const token = await getToken();
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
     let targets;
     if (planetId === 'all') {
-      const data = await apiFetch('/api/planets', token);
+      const data = await apiFetch('/api/planets');
       targets = (data.planets || []).map(p => p.id);
     } else {
-      targets = [planetId || await getHomePlanetId(token)];
+      targets = [planetId || await getHomePlanetId()];
     }
     const fleet = {};
     for (const id of targets) {
-      const data = await apiFetch(`/api/planets/${id}/fleet`, token);
+      const data = await apiFetch(`/api/planets/${id}/fleet`);
       for (const f of (data.fleet || [])) {
         const key = f.definition?.key;
         const qty = (f.quantity || 0) - (f.damagedQuantity || 0);
@@ -699,12 +629,13 @@ async function getFleet(planetId) {
 // shipyard ship id) is what the mine endpoint needs.
 async function getShipDefs() {
   const server = await gameServer();
-  const token = await getToken(server);
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   try {
-    const planetId = await getHomePlanetId(token);
-    const data = await apiFetch(`/api/planets/${planetId}/shipyard`, token, server);
-    const race = jwtRace(token);
+    const planetId = await getHomePlanetId();
+    const [data, me] = await Promise.all([
+      apiFetch(`/api/planets/${planetId}/shipyard`, server),
+      apiFetch('/api/auth/me', server).catch(() => ({})),
+    ]);
+    const race = me.user?.race || null;
     const ships = (data.ships || []).map(s => ({
       shipDefId: s.id,
       key: s.key || '',
@@ -728,11 +659,9 @@ async function getShipDefs() {
 
 // Ships actually available on one planet, as { shipDefId: undamagedQuantity }.
 async function getPlanetShips(planetId) {
-  const token = await getToken();
-  if (!token) return { error: '尚未登录 Nexus Legacy。' };
   if (planetId == null) return { error: '尚未选择星球。' };
   try {
-    const data = await apiFetch(`/api/planets/${planetId}/fleet`, token);
+    const data = await apiFetch(`/api/planets/${planetId}/fleet`);
     const available = {};
     for (const f of (data.fleet || [])) {
       const qty = (f.quantity || 0) - (f.damagedQuantity || 0);
@@ -745,9 +674,7 @@ async function getPlanetShips(planetId) {
 }
 
 // fuel-estimate has its own tighter scope (40/10s, 120/min) separate from the
-// global RateLimit-* budget apiFetch tracks. gamePost responses come back via
-// the content script as {ok,data}/{error} with no headers relayed, so this
-// gates client-side on the known caps instead of reading server state.
+// global RateLimit-* budget apiFetch tracks, so gate it client-side too.
 const FUEL_EST_TIMES = [];
 async function fuelEstimateGate() {
   for (;;) {
@@ -760,21 +687,16 @@ async function fuelEstimateGate() {
   FUEL_EST_TIMES.push(Date.now());
 }
 
-// POST a fleet action (mine / survey / investigate) through the game tab's
-// content script, so the request is same-origin with the session cookie —
-// identical to the game's own call. A Bearer request straight from the
-// extension is rejected by the server (500).
+// POST a fleet action (mine / survey / investigate) through the same-origin
+// game-tab request bridge used by API reads.
 async function gamePost(path, body) {
   if (!(body.ships || []).length) return { error: '尚未选择舰船。' };
   if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
   const server = await gameServer();
-  const token = await getToken(server);
   try {
-    const tabs = await browser.tabs.query({ url: `${server.origin}/*` });
-    if (!tabs.length) return { error: `请先在标签页中打开 ${server.name}（${server.id}）。` };
     // Retry on 429, honouring Retry-After, then exponential backoff — same policy as apiFetch.
     for (let attempt = 0; ; attempt++) {
-      const r = await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method: 'POST', path, token, body });
+      const r = await requestFromGameTab(path, { method: 'POST', body, server });
       if (r && r.status === 429 && attempt < 4) {
         const ra = parseFloat(r.retryAfter);
         await new Promise(res => setTimeout(res, Number.isFinite(ra) ? ra * 1000 : 500 * 2 ** attempt));
@@ -951,14 +873,14 @@ function addShipCost(detail, ships, into, factor) {
 
 const ZONE_REFRESH_MS = 24 * 3600 * 1000;
 
-async function getSystemZones(token) {
+async function getSystemZones() {
   const { system_zones, system_zones_at, system_coords_by_id } =
     await globalThis.nexusStorage.get(['system_zones', 'system_zones_at', 'system_coords_by_id']);
   if (system_zones && system_zones_at && system_coords_by_id && Date.now() - system_zones_at < ZONE_REFRESH_MS) {
     return system_zones;
   }
   try {
-    const data = await apiFetch('/api/galaxy/map', token);
+    const data = await apiFetch('/api/galaxy/map');
     const map = {};        // name → zone
     const byId = {};       // systemId → zone
     const coordsById = {}; // systemId → {x, y}  (AU — galaxy map units = AU, verified 2026-06-22)
@@ -1009,10 +931,10 @@ function resolveZone(systemName, zones) {
 // Pirate reports reference only a campId; pirate-camps maps that to a system,
 // which the galaxy map maps to a zone. Cached so completed-raid reports (and
 // the back-fill) can resolve their zone.
-async function getCampZones(token, zones) {
+async function getCampZones(zones) {
   let camps;
   try {
-    camps = (await apiFetch(PIRATE_CAMPS_PATH, token)).camps || [];
+    camps = (await apiFetch(PIRATE_CAMPS_PATH)).camps || [];
   } catch {
     const { camp_zones } = await globalThis.nexusStorage.get('camp_zones');
     return camp_zones || {};
@@ -1028,10 +950,10 @@ async function getCampZones(token, zones) {
 
 // Wormhole runs reference only a wormholeId; the wormholes endpoint maps that
 // to a system → zone. Cached so completed runs (and the back-fill) resolve.
-async function getWormholeZones(token, zones) {
+async function getWormholeZones(zones) {
   let holes;
   try {
-    holes = (await apiFetch(WORMHOLES_PATH, token)).wormholes || [];
+    holes = (await apiFetch(WORMHOLES_PATH)).wormholes || [];
   } catch {
     const { wormhole_zones } = await globalThis.nexusStorage.get('wormhole_zones');
     return wormhole_zones || {};
@@ -1588,7 +1510,6 @@ async function processPvpReports(reports) {
   const CORE = ['ore', 'silicates', 'hydrogen', 'alloys'];
   const fresh = reports.filter(r => !seen.has(r.id));
   if (!fresh.length) return 0;
-  const token = await getToken();
   let n = 0;
   for (const lite of fresh) {
     seen.add(lite.id);   // mark seen even if we skip it, so it's not reconsidered
@@ -1598,10 +1519,8 @@ async function processPvpReports(reports) {
     const liteOpp = liteSide === 'attacker' ? lite.defenderProfile : lite.attackerProfile;
     if (!liteOpp || !liteOpp.username) continue;
     let r = lite;
-    if (token) {
-      try { const det = await apiFetch(`/api/fleet/reports/${lite.id}`, token); if (det && det.report) r = det.report; }
-      catch { /* fall back to the list record */ }
-    }
+    try { const det = await apiFetch(`/api/fleet/reports/${lite.id}`); if (det && det.report) r = det.report; }
+    catch { /* fall back to the list record */ }
     const side = r.currentUserBattleSide === 'defender' ? 'defender' : 'attacker';
     const won = (r.outcome === 'attacker_won' && side === 'attacker') ||
                 (r.outcome === 'defender_won' && side === 'defender');
@@ -2543,38 +2462,31 @@ async function ensureSchema() {
 // ── Full scrape (15-min alarm fallback + manual button) ────────────────────
 
 async function scrape() {
-  const token = await getToken();
-  if (!token) {
-    console.warn('[NexusAccounting] No token — log in to the game first.');
-    await globalThis.nexusStorage.set({ last_error: '尚未登录 Nexus Legacy。' });
-    return;
-  }
-
   await ensureSchema();
 
   try {
-    const planetId = await getHomePlanetId(token);
+    const planetId = await getHomePlanetId();
     const [shipyardData, reportData, pirateData, spyData, campScoutData,
            miningData, expeditionData, wormholeData, xenoMessagesData, systemDebrisData, missionsData, researchData, pvpData, zones] = await Promise.all([
-      apiFetch(`/api/planets/${planetId}/shipyard`, token).catch(() => null),   // 403s while ships are on patrol — fall back to cached catalog
-      apiFetch(REPORTS_PATH, token),
-      apiFetch(PIRATES_PATH, token),
-      apiFetch(SPY_PATH, token),
-      apiFetch(CAMP_SCOUT_PATH, token),
-      apiFetch(MINING_PATH, token).catch(() => ({ reports: [] })),
-      apiFetch(EXPEDITION_PATH, token).catch(() => ({ reports: [] })),
-      apiFetch(WORMHOLE_PATH, token).catch(() => ({ runs: [] })),
-      apiFetch(`${XENO_MESSAGES_PATH}?page=1`, token).catch(() => ({ notifications: [] })),
-      apiFetch(SYSTEM_DEBRIS_PATH, token).catch(() => ({ debris: [] })),
-      apiFetch(MISSIONS_PATH, token).catch(() => ({ missions: [] })),
-      apiFetch(RESEARCH_PATH, token).catch(() => ({ research: [] })),
-      apiFetch(PVP_PATH, token).catch(() => ({ reports: [] })),
-      getSystemZones(token),
+      apiFetch(`/api/planets/${planetId}/shipyard`).catch(() => null),   // 403s while ships are on patrol — fall back to cached catalog
+      apiFetch(REPORTS_PATH),
+      apiFetch(PIRATES_PATH),
+      apiFetch(SPY_PATH),
+      apiFetch(CAMP_SCOUT_PATH),
+      apiFetch(MINING_PATH).catch(() => ({ reports: [] })),
+      apiFetch(EXPEDITION_PATH).catch(() => ({ reports: [] })),
+      apiFetch(WORMHOLE_PATH).catch(() => ({ runs: [] })),
+      apiFetch(`${XENO_MESSAGES_PATH}?page=1`).catch(() => ({ notifications: [] })),
+      apiFetch(SYSTEM_DEBRIS_PATH).catch(() => ({ debris: [] })),
+      apiFetch(MISSIONS_PATH).catch(() => ({ missions: [] })),
+      apiFetch(RESEARCH_PATH).catch(() => ({ research: [] })),
+      apiFetch(PVP_PATH).catch(() => ({ reports: [] })),
+      getSystemZones(),
     ]);
 
     const [campZones, wormholeZones] = await Promise.all([
-      getCampZones(token, zones),
-      getWormholeZones(token, zones),
+      getCampZones(zones),
+      getWormholeZones(zones),
     ]);
     const { wormhole_classes: wormholeClasses, system_zone_by_id: zoneById } =
       await globalThis.nexusStorage.get(['wormhole_classes', 'system_zone_by_id']);
@@ -2670,11 +2582,9 @@ browser.webRequest.onCompleted.addListener(
 );
 
 async function refetchEndpoint(path, server) {
-  const token = await getToken(server);
-  if (!token) return;
   let json;
   try {
-    json = await apiFetch(path, token, server);
+    json = await apiFetch(path, server);
   } catch {
     return;
   }
@@ -2740,6 +2650,7 @@ function routeIntercepted(url, json) {
 // Exposed for the node test harness (tests/processors.test.js). The service
 // worker itself drives everything through the listeners registered above.
 export {
+  apiFetch,
   processSurveyReports, processPirateReports, processMiningReports,
   processPvpReports,
   processExpeditionReports, processSystemDebris, rebuildAggregates,

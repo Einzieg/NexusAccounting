@@ -8,7 +8,7 @@
 // lives in <body>, outside `.game-content`, so React re-renders never wipe it.
 //
 // Data: /api/planets (list) + /api/planets/{id} (detail) fetched same-origin —
-// the nexus_token cookie rides along automatically, no background messaging.
+// the browser-managed session cookie rides along automatically.
 //
 // IIFE + re-run guard: Firefox can inject a content script twice into the same
 // isolated world (extension reload into an open tab); top-level `const`s would

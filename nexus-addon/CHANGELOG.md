@@ -4,6 +4,12 @@
 
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [未发布]
+
+### 修复
+- API 鉴权改为通过已登录的游戏标签页发送同源请求，匹配 Nexus Legacy 当前的 HttpOnly Cookie 会话机制，修复旧 `nexus_token` Bearer 头导致的 `/api/planets → 401`。
+- 移除不再需要的 Cookie 读取权限；助手不再读取或转发会话 Cookie 值。
+
 ## [1.8.1] - 2026-08-06
 
 ### 变更

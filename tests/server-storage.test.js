@@ -68,4 +68,5 @@ test('manifest injects the addon on both game servers', async () => {
   }
   assert.ok(manifest.content_scripts.some(script =>
     script.run_at === 'document_start' && script.js.includes('server-storage.js')));
+  assert.ok(!manifest.permissions.includes('cookies'), 'same-origin API bridge does not need cookie access');
 });

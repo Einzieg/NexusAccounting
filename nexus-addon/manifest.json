@@ -6,7 +6,6 @@
   "author": "Verrok",
   "homepage_url": "https://github.com/Verroq/NexusAccounting",
   "permissions": [
-    "cookies",
     "storage",
     "alarms",
     "downloads",

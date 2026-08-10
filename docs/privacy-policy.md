@@ -1,6 +1,6 @@
 # Privacy Policy — Nexus Accounting
 
-**Last updated: 2026-08-06**
+**Last updated: 2026-08-11**
 
 Nexus Accounting is a browser extension that reads your Nexus Legacy game data and displays it locally as a personal accounting dashboard. This policy describes exactly what data the extension accesses, how it is used, and where it goes.
 
@@ -20,7 +20,7 @@ The extension reads the following data from the selected Nexus Legacy game API (
 | Galaxy map | System names, security zones, arm/sector coordinates (for zone tagging and the planet finder) |
 | Fuel logs | Hydrogen cost per launched mission (type, zone, amount) |
 
-The extension also reads your `nexus_token` session cookie from `nexuslegacy.space` to authenticate those API requests. No other cookies are read, and no cookies are written or modified.
+The extension sends API requests through a content script running in an already authenticated Nexus Legacy game tab. The browser attaches the HttpOnly session cookie automatically; the extension does not read, store, forward, write, or modify cookie values.
 
 ---
 
@@ -71,7 +71,7 @@ Backup files in your Downloads folder are not deleted automatically; you can del
 
 ## 7. Security
 
-All communication with the game API uses HTTPS. Your session token is read from the browser's cookie store and transmitted only to `nexuslegacy.space`. The extension does not expose your token to any other origin.
+All communication with the game API uses HTTPS and runs same-origin inside the selected Nexus Legacy game tab. Session cookies remain managed by the browser and are never exposed to the extension.
 
 ---
 
