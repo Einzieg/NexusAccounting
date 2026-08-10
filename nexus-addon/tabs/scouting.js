@@ -7,7 +7,7 @@
 // All routed through the game tab (same-origin) like the asteroid mine call.
 
 import { loadFleetTemplates } from './fleets.js';
-import { applySort, attachSortable, clearAvailStrip, confirmDialog, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, store, uiLabel } from '../common.js';
+import { COMMAND_VESSEL_CHIP, accountCargoBonus, applySort, attachSortable, clearAvailStrip, confirmDialog, effectiveCargoCapacity, fmtCountdown, fuelEstimate, makeMissionBar, rememberSelection, rememberedSelections, renderAvailStrip, retreatThresholdLabel, shipDisplayName, showLeaderRetryNotice, store, templateRegularShips, templateRetreatThreshold, templateWantsLeader, uiLabel } from '../common.js';
 
 let inited = false;
 let scPlanets = [];          // [{ id, name, systemId, systemName }]
@@ -132,7 +132,7 @@ export async function initScoutingTab() {
   document.getElementById('sc-refresh').addEventListener('click', loadActiveSurveys);
   document.getElementById('sc-planet').addEventListener('change', e => { rememberSelection('sc-planet', e.target.value); renderSurveys(); computeDebrisFuel(); computeSalvageFuel(); updateAvail(); });
   document.getElementById('sc-scan-template').addEventListener('change', e => rememberSelection('sc-scan-template', e.target.value));
-  document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); });
+  document.getElementById('sc-inv-template').addEventListener('change', e => { rememberSelection('sc-inv-template', e.target.value); computeFuel(); updateAvail(); });
   document.getElementById('sc-debris-refresh').addEventListener('click', loadDebris);
   document.getElementById('sc-debris-hidden').addEventListener('click', () => { scShowHidden = !scShowHidden; renderDebris(); });
   document.getElementById('sc-debris-invonly').addEventListener('change', e => { scInvestigatedOnly = e.target.checked; renderDebris(); });
@@ -182,20 +182,125 @@ async function refreshTemplates() {
 // Resolve a template's ships, capped to what the source planet actually has.
 // Returns { ships, short } or { error }.
 async function templateShips(templateId, planetId) {
+  await ensureShipCatalog();
   const tpl = scTemplates.find(t => String(t.id) === templateId);
   if (!tpl) return { error: '未选择舰队模板，请先在“舰队模板”中创建。' };
-  const wanted = Object.entries(tpl.ships || {})
-    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
-    .filter(s => s.quantity > 0);
-  if (!wanted.length) return { error: `模板“${tpl.name}”中没有舰船。` };
+  const attachLeader = templateWantsLeader(tpl, scAllShips);
+  const escortRetreatThreshold = templateRetreatThreshold(tpl);
+  const wanted = templateRegularShips(tpl, scAllShips);
+  if (!wanted.length && !attachLeader) return { error: `模板“${tpl.name}”中没有舰船。` };
 
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) return { error: av.error };
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
-  if (!ships.length) return { error: `该星球上没有模板“${tpl.name}”中的任何舰船。` };
-  return { ships, short: wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity), name: tpl.name };
+  if (!ships.length && !attachLeader) return { error: `该星球上没有模板“${tpl.name}”中的任何舰船。` };
+  let leaderWarning = '';
+  if (attachLeader) {
+    const leader = await checkLeaderReadyForPlanet(planetId);
+    if (leader.ok === false) return { error: `模板“${tpl.name}”要求编入指挥舰，但${leader.message}` };
+    if (leader.ok == null) leaderWarning = `⚠ ${leader.message}，仍会向游戏请求编入指挥舰。`;
+  }
+  return {
+    ships,
+    short: wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity),
+    name: tpl.name,
+    attachLeader,
+    escortRetreatThreshold,
+    leaderWarning,
+  };
+}
+
+function missionDisplayShips(r) {
+  return r.attachLeader ? [COMMAND_VESSEL_CHIP, ...(r.ships || [])] : (r.ships || []);
+}
+
+function appendLeaderChip(box, attachLeader) {
+  if (!box) return;
+  box.querySelectorAll('[data-template-leader]').forEach(el => el.remove());
+  if (!attachLeader) return;
+  const chip = document.createElement('span');
+  chip.dataset.templateLeader = '1';
+  chip.title = '该调查模板会请求编入出发星球待命的指挥舰。发起前会再次检查指挥舰状态。';
+  chip.style.cssText = 'display:inline-flex; align-items:center; gap:5px; color:#79c0ff; font-weight:600;';
+  chip.textContent = '模板请求编入：指挥舰';
+  box.appendChild(chip);
+}
+
+function selectedInvestigationRetreatThreshold() {
+  const sel = document.getElementById('sc-inv-template');
+  const tpl = sel ? scTemplates.find(t => String(t.id) === sel.value) : null;
+  return templateRetreatThreshold(tpl);
+}
+
+function readAny(obj, keys) {
+  for (const k of keys) if (obj && obj[k] != null) return obj[k];
+  return null;
+}
+
+function findLeaderVessel(data) {
+  const direct = [
+    data?.vessel, data?.commandVessel, data?.leaderCommandVessel,
+    data?.leadership?.vessel, data?.commandCore?.vessel,
+  ].filter(Boolean);
+  const seen = new Set();
+  const looksLikeVessel = v => !!(v && typeof v === 'object' && (
+    readAny(v, ['currentPlanetId', 'current_planet_id', 'currentMoonId', 'current_moon_id',
+      'currentStationId', 'current_station_id', 'currentOutpostId', 'current_outpost_id']) != null ||
+    readAny(v, ['assignedMissionId', 'assigned_mission_id']) != null ||
+    (readAny(v, ['hullIntegrity', 'hull_integrity', 'maxHullIntegrity', 'max_hull_integrity']) != null &&
+      readAny(v, ['level', 'status']) != null)
+  ));
+  const walk = v => {
+    if (!v || typeof v !== 'object' || seen.has(v)) return null;
+    seen.add(v);
+    if (looksLikeVessel(v)) return v;
+    if (Array.isArray(v)) {
+      for (const x of v) { const found = walk(x); if (found) return found; }
+    } else {
+      for (const x of Object.values(v)) { const found = walk(x); if (found) return found; }
+    }
+    return null;
+  };
+  for (const v of direct) { const found = walk(v); if (found) return found; }
+  return walk(data);
+}
+
+async function checkLeaderReadyForPlanet(planetId) {
+  const res = await browser.runtime.sendMessage({ type: 'GET_LEADERSHIP' });
+  if (res?.error) return { ok: null, message: `无法读取指挥舰状态：${res.error}` };
+  if (res?.enabled === false) return { ok: false, message: '指挥舰功能未启用。' };
+  const vessel = findLeaderVessel(res);
+  if (!vessel) return { ok: null, message: '无法确认指挥舰位置' };
+
+  const assigned = readAny(vessel, ['assignedMissionId', 'assigned_mission_id']);
+  if (assigned) return { ok: false, message: `指挥舰正在任务 #${assigned} 中。` };
+  const status = String(readAny(vessel, ['status']) || '').toLowerCase();
+  if (status && status !== 'ready') return { ok: false, message: `指挥舰当前状态为 ${status}，不能编入。` };
+
+  const here = readAny(vessel, ['currentPlanetId', 'current_planet_id']);
+  if (here != null && Number(here) !== Number(planetId)) {
+    return { ok: false, message: '指挥舰不在当前调查出发星球待命。' };
+  }
+  const elsewhere = readAny(vessel, ['currentMoonId', 'current_moon_id', 'currentStationId',
+    'current_station_id', 'currentOutpostId', 'current_outpost_id']);
+  if (here == null && elsewhere != null) return { ok: false, message: '指挥舰停靠在非行星地点，不能从当前星球编入。' };
+  return { ok: true, message: '指挥舰已在出发星球待命。' };
+}
+
+async function ensureShipCatalog() {
+  if (scAllShips.length) return;
+  const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
+  scAllShips = (defs.ships || []).map(s => ({ shipDefId: s.shipDefId, key: s.key, name: s.name, imageUrl: s.imageUrl }));
+}
+
+function missionLeaderJoined(res) {
+  const m = res?.data?.mission || res?.mission || null;
+  if (!m) return null;
+  if (m.leadershipParticipated != null) return !!m.leadershipParticipated;
+  if (m.leadership_participated != null) return !!m.leadership_participated;
+  return null;
 }
 
 // Clickable zone toggles, coloured per zone (mirrors the Asteroids filter).
@@ -276,19 +381,30 @@ async function launchScan() {
     return;
   }
 
-  const r = await templateShips(document.getElementById('sc-scan-template').value, planetId);
+  const scanTemplateId = document.getElementById('sc-scan-template').value;
+  await refreshTemplates();
+  const r = await templateShips(scanTemplateId, planetId);
   if (r.error) { status.textContent = r.error; return; }
   if (!await confirmDialog(`勘测 ${target.name}（距离 ${target.dist}）？\n\n` +
     `出发地：${planet ? planet.name : planetId}\n模板：${r.name}` +
-    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''), r.ships)) return;
+    (r.attachLeader ? '\n指挥舰：请求编入' : '') +
+    (r.escortRetreatThreshold != null ? `\n护航撤回阈值：${retreatThresholdLabel(r.escortRetreatThreshold)}` : '') +
+    (r.leaderWarning ? `\n${r.leaderWarning}` : '') +
+    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''), missionDisplayShips(r))) return;
 
   status.textContent = `正在勘测 ${target.name}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_SURVEY', sourcePlanetId: planetId, targetSystemId: target.id, ships: r.ships,
+    attachLeader: !!r.attachLeader,
+    escortRetreatThreshold: r.escortRetreatThreshold,
   });
+  showLeaderRetryNotice(res);
   if (res.error) { status.textContent = `勘测失败：${res.error}`; return; }
   scJustSurveyed.add(target.id);
-  status.textContent = `探测器已派往 ${target.name} ✓`;
+  const joined = missionLeaderJoined(res);
+  status.textContent = r.attachLeader && !res.leaderRetryNotice && joined === false
+    ? `探测器已派往 ${target.name}，但返回任务未显示指挥舰编入。请确认指挥舰在出发星球待命。`
+    : `探测器已派往 ${target.name} ✓`;
   loadActiveSurveys();
   updateAvail();
 }
@@ -441,10 +557,9 @@ async function computeFuel() {
   const timeCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-time');
   // Estimate uses the template as designed (not capped to the planet's stock).
   const tpl = scTemplates.find(t => String(t.id) === document.getElementById('sc-inv-template').value);
-  const ships = Object.entries(tpl ? tpl.ships : {})
-    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
-    .filter(s => s.quantity > 0);
-  if (!ships.length) {
+  const attachLeader = templateWantsLeader(tpl, scAllShips);
+  const ships = templateRegularShips(tpl, scAllShips);
+  if (!ships.length && !attachLeader) {
     fuelCells().forEach(c => { c.textContent = '—'; c.title = tpl ? '模板中没有舰船' : '尚未选择模板'; });
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
@@ -456,7 +571,7 @@ async function computeFuel() {
     const timeCell = tr.querySelector('.sc-time');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await fuelEstimate(planetId, sysId, ships);
+    const est = await fuelEstimate(planetId, sysId, ships, attachLeader);
     if (gen !== fuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
@@ -501,20 +616,32 @@ async function investigate(report) {
   const planetId = Number(document.getElementById('sc-planet').value);
   const planet = scPlanets.find(p => p.id === planetId);
 
-  const r = await templateShips(document.getElementById('sc-inv-template').value, planetId);
+  const invTemplateId = document.getElementById('sc-inv-template').value;
+  await refreshTemplates();
+  const r = await templateShips(invTemplateId, planetId);
   if (r.error) { status.textContent = r.error; return; }
+  if (r.attachLeader) r.name = `${r.name}（编入指挥舰）`;
   if (!await confirmDialog(`调查 ${report.systemName}（${report.eventTitle || uiLabel(report.eventType)}）？\n\n` +
     `出发地：${planet ? planet.name : planetId}\n模板：${r.name}` +
-    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''), r.ships)) return;
+    (r.attachLeader ? '\n指挥舰：请求编入' : '') +
+    (r.escortRetreatThreshold != null ? `\n护航撤回阈值：${retreatThresholdLabel(r.escortRetreatThreshold)}` : '') +
+    (r.leaderWarning ? `\n${r.leaderWarning}` : '') +
+    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''), missionDisplayShips(r))) return;
 
   status.textContent = `正在调查 ${report.systemName}…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_INVESTIGATE', sourcePlanetId: planetId, reportId: report.id, ships: r.ships,
+    attachLeader: !!r.attachLeader,
+    escortRetreatThreshold: r.escortRetreatThreshold,
   });
+  showLeaderRetryNotice(res);
   if (res.error) { status.textContent = `调查失败：${res.error}`; return; }
   scJustInvestigated.add(report.systemId);
   scInvestigating.add(report.systemId);
-  status.textContent = `舰队已派往 ${report.systemName} ✓`;
+  const joined = missionLeaderJoined(res);
+  status.textContent = r.attachLeader && !res.leaderRetryNotice && joined === false
+    ? `舰队已派往 ${report.systemName}，但返回任务未显示指挥舰编入。请确认指挥舰在出发星球待命。`
+    : `舰队已派往 ${report.systemName} ✓`;
   loadActiveSurveys();
   setTimeout(loadActiveSurveys, 2000);   // retry for post-POST API lag → prompt bar
   updateAvail();
@@ -601,14 +728,14 @@ async function loadCargoShips() {
     browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
   ]);
   const bonus = cargoBonuses(stored.research || []);
-  const commander = me?.user?.activeLeaderBonuses?.cargoBonus || 0;   // leader cargo bonus
-  scAllShips = (res.ships || []).map(s => ({ shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl }));
+  const accountCargo = accountCargoBonus(me);
+  scAllShips = (res.ships || []).map(s => ({ shipDefId: s.shipDefId, key: s.key, name: s.name, imageUrl: s.imageUrl }));
   scCargoShips = (res.ships || [])
     .filter(s => CARGO_KEYS.includes(s.key) && s.cargoCapacity > 0)
     .map(s => {
-      // cargo_bonus + commander lift every hauler; shuttle_cargo_bonus adds on top.
-      const b = bonus.general + commander + (s.key === 'transport_shuttle' ? bonus.shuttle : 0);
-      return { shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl, cap: Math.floor(s.cargoCapacity * (1 + b)) };
+      // Research + account/leader cargo bonuses lift every hauler; shuttle_cargo_bonus adds on top.
+      const b = bonus.general + accountCargo.bonus + (s.key === 'transport_shuttle' ? bonus.shuttle : 0);
+      return { shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl, cap: effectiveCargoCapacity(s.cargoCapacity, b) };
     })
     .sort((a, b) => b.cap - a.cap);
   // Restore the remembered cargo-type selection (survives tabs/sessions).
@@ -641,7 +768,8 @@ function renderCargoToggles() {
     const on = scCargoSel.has(s.shipDefId);
     const b = document.createElement('button');
     b.type = 'button';
-    b.title = `${s.name} — ${s.cap.toLocaleString()} 货舱容量`;
+    const name = shipDisplayName(s);
+    b.title = `${name} — ${s.cap.toLocaleString()} 货舱容量`;
     b.style.cssText = `padding:2px; border-radius:6px; cursor:pointer; line-height:0;
       border:2px solid ${on ? '#2ea043' : '#30363d'}; background:${on ? '#193b22' : 'transparent'};`;
     if (s.imageUrl) {
@@ -650,7 +778,7 @@ function renderCargoToggles() {
       img.style.cssText = 'width:28px; height:28px; object-fit:contain;';
       b.appendChild(img);
     } else {
-      b.textContent = s.name;
+      b.textContent = name;
       b.style.lineHeight = '';
     }
     b.addEventListener('click', () => {
@@ -701,6 +829,8 @@ async function updateAvail() {
   if (av.error) { clearAvailStrip(debrisBox, av.error); clearAvailStrip(invBox, av.error); return; }
   renderAvailStrip(debrisBox, scCargoShips, av.available, '该星球没有货运舰船。');
   renderAvailStrip(invBox, scAllShips, av.available, '该星球没有舰船。');
+  const tpl = scTemplates.find(t => String(t.id) === document.getElementById('sc-inv-template').value);
+  appendLeaderChip(invBox, templateWantsLeader(tpl, scAllShips));
 }
 
 // Fewest selected haulers (largest-first, smallest fills the tail) to carry
@@ -846,7 +976,7 @@ async function computeDebrisFuel() {
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
   }
-  const nameOf = id => (scCargoShips.find(c => c.shipDefId === id) || {}).name || '#' + id;
+  const nameOf = id => shipDisplayName(scCargoShips.find(c => c.shipDefId === id), '#' + id);
   for (const tr of document.querySelectorAll('#sc-debris-tbody tr')) {
     if (gen !== debrisFuelGen) return;
     const ships = planFleet(Number(tr.dataset.total) || 0, cargo);
@@ -890,15 +1020,19 @@ async function collectDebris(field) {
   if (!ships.length) { status.textContent = '该星球没有已选中的货运舰船。'; return; }
   const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
   const short = carried < field.total;
+  const escortRetreatThreshold = selectedInvestigationRetreatThreshold();
 
   if (!await confirmDialog(`回收 ${field.system} 的残骸（${field.total.toLocaleString()} 货物）？\n\n` +
     `出发地：${planet ? planet.name : planetId}` +
+    (escortRetreatThreshold != null ? `\n护航撤回阈值：${retreatThresholdLabel(escortRetreatThreshold)}（当前调查模板）` : '') +
     (short ? `\n\n⚠ 该星球上已选舰船只能运载 ${carried.toLocaleString()}，将回收能够装下的部分。` : ''), ships)) return;
 
   status.textContent = `正在回收 ${field.system} 的残骸…`;
   const res = await browser.runtime.sendMessage({
     type: 'COLLECT_DEBRIS', sourcePlanetId: planetId, debrisId: field.debrisId, ships,
+    escortRetreatThreshold,
   });
+  showLeaderRetryNotice(res);
   if (res.error) { status.textContent = `回收失败：${res.error}`; return; }
   scJustCollected.add(field.debrisId);
   if (field.systemId != null) scCollecting.set(field.systemId, { field: { ...field }, seenRun: false });
@@ -999,7 +1133,7 @@ async function computeSalvageFuel() {
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
   }
-  const nameOf = id => (scCargoShips.find(c => c.shipDefId === id) || {}).name || '#' + id;
+  const nameOf = id => shipDisplayName(scCargoShips.find(c => c.shipDefId === id), '#' + id);
   for (const tr of document.querySelectorAll('#sc-salvage-tbody tr')) {
     if (gen !== salvageFuelGen) return;
     const ships = planFleet(Number(tr.dataset.total) || 0, cargo);
@@ -1041,15 +1175,19 @@ async function collectSalvage(salvage) {
   if (!ships.length) { status.textContent = '该星球没有已选中的货运舰船。'; return; }
   const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
   const short = carried < salvage.total;
+  const escortRetreatThreshold = selectedInvestigationRetreatThreshold();
 
   if (!await confirmDialog(`回收 ${salvage.system} 的战利品（${salvage.total.toLocaleString()} 货物）？\n\n` +
     `出发地：${planet ? planet.name : planetId}` +
+    (escortRetreatThreshold != null ? `\n护航撤回阈值：${retreatThresholdLabel(escortRetreatThreshold)}（当前调查模板）` : '') +
     (short ? `\n\n⚠ 该星球上已选舰船只能运载 ${carried.toLocaleString()}，将回收能够装下的部分。` : ''), ships)) return;
 
   status.textContent = `正在回收 ${salvage.system} 的战利品…`;
   const res = await browser.runtime.sendMessage({
     type: 'COLLECT_SALVAGE', sourcePlanetId: planetId, reportId: salvage.reportId, ships,
+    escortRetreatThreshold,
   });
+  showLeaderRetryNotice(res);
   if (res.error) { status.textContent = `回收失败：${res.error}`; return; }
   scJustSalvaged.add(salvage.reportId);
   status.textContent = `舰队已派往 ${salvage.system} ✓`;

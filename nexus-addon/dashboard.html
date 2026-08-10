@@ -6,7 +6,10 @@
   <link rel="stylesheet" href="dashboard.css" />
 </head>
 <body>
-  <h1>Nexus Accounting 助手</h1>
+  <div class="dashboard-topline">
+    <h1>Nexus Accounting 助手</h1>
+    <button id="build-version" class="build-version" type="button" title="查看当前修改内容">1.8.4+20260811-041143</button>
+  </div>
 
   <nav class="tabs">
     <button class="tab active" data-tab="global">总览</button>
@@ -620,6 +623,9 @@
       <label>采矿出发点：
         <select id="af-planet"></select>
       </label>
+      <label>矿类型
+        <select id="af-type-select"></select>
+      </label>
       <label>倍率 ≥
         <input id="af-mult-min" type="number" step="0.01" min="0" placeholder="0" />
       </label>
@@ -629,8 +635,8 @@
       <label>剩余比例 ≥
         <input id="af-left-min" type="number" min="0" max="100" placeholder="0" />
       </label>
-      <label>最近星系数
-        <input id="af-near" type="number" min="1" max="500" value="25" style="width:70px;
+      <label title="从近到远扫描，直到找到指定数量的匹配小行星带。">目标结果数
+        <input id="af-near" type="number" min="1" max="10" value="5" style="width:70px;
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
@@ -658,8 +664,8 @@
       <label>剩余比例 ≥
         <input id="ls-left-min" type="number" min="0" max="100" placeholder="0" />
       </label>
-      <label>最近星系数
-        <input id="ls-near" type="number" min="1" max="500" value="25" style="width:70px;
+      <label title="后台从近到远扫描，直到找到指定数量的匹配小行星带。">目标结果数
+        <input id="ls-near" type="number" min="1" max="10" value="5" style="width:70px;
                background:#21262d; border:1px solid #30363d; color:#e6edf3;
                padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
@@ -681,6 +687,16 @@
         <input id="af-excavator" type="checkbox" />挖掘机 +20%
       </label>
       <span style="color:#8b949e; font-size:0.8rem;">点击行内的 🚀 可按推荐舰船打开舰队编辑器；请在“舰队模板”标签页编辑模板。</span>
+      <div id="af-template-summary" class="af-template-summary"></div>
+    </div>
+
+    <div class="reports-section">
+      <div class="reports-header">
+        <h2>当前采矿进程</h2>
+        <span id="af-mining-count" style="color:#8b949e; font-size:0.8rem;"></span>
+        <button id="af-mining-refresh" style="margin-left:auto;">刷新</button>
+      </div>
+      <div id="af-mining-list" style="display:flex; flex-direction:column; gap:10px;"></div>
     </div>
 
     <div class="reports-section">
@@ -707,6 +723,7 @@
             <th class="sortable" data-key="ownerName" title="该小行星带上前哨站的所有者（如有）">前哨站</th>
             <th class="sortable" data-key="distance">距离</th>
             <th title="将所选模板派往此处需要消耗的氢">燃料成本</th>
+            <th title="所选模板从出发星球到该小行星带所在星系的单程航行时间">单程航行时间</th>
             <th class="sortable" data-key="recShips" title="在 10 个采矿周期内采完该小行星带的推荐舰船">舰船推荐</th>
           </tr>
         </thead>
@@ -758,7 +775,7 @@
             <th>异常点</th>
             <th>区域</th>
             <th title="派出所选调查模板需要消耗的氢">燃料成本</th>
-            <th title="所选模板的单程航行时间">航行时间</th>
+            <th title="所选模板的单程航行时间">单程航行时间</th>
             <th>剩余有效期</th>
           </tr>
         </thead>
@@ -798,7 +815,7 @@
             <th class="sortable" data-key="total" title="矿石 + 硅酸盐 + 合金">总计</th>
             <th title="使用所选舰种全部回收所需的舰船数">舰船数量</th>
             <th title="派出所选回收模板需要消耗的氢">燃料成本</th>
-            <th title="规划舰队的单程航行时间">航行时间</th>
+            <th title="规划舰队的单程航行时间">单程航行时间</th>
             <th title="隐藏或恢复该行"></th>
           </tr>
         </thead>
@@ -823,7 +840,7 @@
             <th class="sortable" data-key="total" title="全部尚未回收的资源">总计</th>
             <th title="使用所选舰种全部回收所需的舰船数">舰船数量</th>
             <th title="派出规划舰队需要消耗的氢">燃料成本</th>
-            <th title="规划舰队的单程航行时间">航行时间</th>
+            <th title="规划舰队的单程航行时间">单程航行时间</th>
             <th title="残骸失效时间">剩余有效期</th>
           </tr>
         </thead>
@@ -926,11 +943,35 @@
                color:#e6edf3; padding:4px 8px; border-radius:6px; font-size:0.85rem;" />
       </label>
     </div>
+    <div class="finder-controls" style="margin-top:0;">
+      <label>星球
+        <select id="ft-planet"></select>
+      </label>
+    </div>
+    <div id="ft-avail" style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:#8b949e; font-size:0.85rem; margin-bottom:8px;"></div>
 
     <div class="fleet-box">
       <h2 class="fleet-title attacker" id="ft-box-title">舰队</h2>
       <span id="ft-status" style="color:#8b949e; font-size:0.8rem;"></span>
+      <div id="ft-selected-total" style="color:#79c0ff; font-size:1rem; line-height:1.55; margin:6px 0 10px;">当前模板已选：0 艘</div>
       <div id="ft-legend" style="display:flex; flex-wrap:wrap; gap:10px 16px; margin:6px 0 10px; font-size:0.78rem;"></div>
+      <label id="ft-leader-row" title="派遣时如果出发星球有待命指挥舰，则随舰队编入。"
+             style="display:inline-flex; align-items:center; gap:6px; color:#c9d1d9; font-size:0.85rem; margin:4px 0 10px; cursor:pointer;">
+        <input id="ft-attach-leader" type="checkbox" />
+        编入指挥舰
+      </label>
+      <div id="ft-retreat-row" title="派遣时附加 escortRetreatThreshold 字段；关闭则不发送该字段。"
+           style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; color:#c9d1d9; font-size:0.85rem; margin:0 0 10px;">
+        <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+          <input id="ft-retreat-enabled" type="checkbox" />
+          按伤害阈值撤回护航
+        </label>
+        <button type="button" data-ft-retreat="30">30%</button>
+        <button type="button" data-ft-retreat="50">50%</button>
+        <button type="button" data-ft-retreat="70">70%</button>
+        <input id="ft-retreat-value" type="hidden" value="70" />
+        <span id="ft-retreat-display" style="color:#8b949e;">当前 70%</span>
+      </div>
       <table class="fleet-table"><tbody id="ft-ships"></tbody></table>
     </div>
   </div>
@@ -991,20 +1032,29 @@
   </div>
 
   <div id="techtree-content" style="display:none;">
-    <div class="controls" style="margin-top:0;">
+    <div class="controls tt-toolbar" style="margin-top:0;">
       <label for="tt-branch">分支：</label>
       <select id="tt-branch">
         <option value="all">全部分支</option>
       </select>
-      <button id="tt-fit">适应宽度</button>
-      <input id="tt-search" type="search" placeholder="搜索科技…" style="margin-left:8px;">
-      <span id="tt-summary" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
+      <input id="tt-search" type="search" placeholder="搜索中文或英文科技名…">
+      <span id="tt-summary"></span>
+      <div class="tt-zoom-controls" role="group" aria-label="科技树缩放">
+        <button id="tt-zoom-out" type="button" title="缩小科技树">−</button>
+        <span id="tt-zoom-label">100%</span>
+        <button id="tt-zoom-in" type="button" title="放大科技树">＋</button>
+      </div>
+      <button id="tt-fit" type="button">适应宽度</button>
+      <button id="tt-queue-toggle" type="button" aria-controls="tt-queue" aria-expanded="false">研究队列</button>
     </div>
     <div id="tt-legend"></div>
-    <div class="tt-main">
+    <div class="tt-main queue-collapsed" id="tt-main">
       <div id="techtree"></div>
-      <aside id="tt-queue">
-        <h3>研究队列</h3>
+      <aside id="tt-queue" aria-label="研究队列">
+        <div class="tt-queue-head">
+          <h3>研究队列</h3>
+          <button id="tt-queue-close" type="button" title="收起研究队列">收起</button>
+        </div>
         <div id="tt-launch-planet" style="display:none;">
           <label for="tt-planet-select">研究星球：</label>
           <select id="tt-planet-select"></select>

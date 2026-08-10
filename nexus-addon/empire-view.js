@@ -8,7 +8,7 @@
 // lives in <body>, outside `.game-content`, so React re-renders never wipe it.
 //
 // Data: /api/planets (list) + /api/planets/{id} (detail) fetched same-origin —
-// the browser-managed session cookie rides along automatically.
+// the browser attaches the HttpOnly session cookie, no background messaging.
 //
 // IIFE + re-run guard: Firefox can inject a content script twice into the same
 // isolated world (extension reload into an open tab); top-level `const`s would
@@ -64,13 +64,37 @@ async function jget(path) {
   return r.json();
 }
 
+const SHIP_NAME_LABELS = {
+  probe: '探测器', spy_probe: '间谍探测器', scout: '侦察舰', fighter: '战斗机',
+  interceptor: '截击机', cruiser: '巡洋舰', torpedo_frigate: '鱼雷护卫舰',
+  carrier: '航母', battleship: '战列舰', missile_cruiser: '导弹巡洋舰',
+  bomber: '轰炸机', dreadnought: '无畏舰', titan: '泰坦',
+  assault_shuttle: '突击穿梭机', hacker_ship: '黑客船', colony_ship: '殖民船',
+  engineer_ship: '工程船', electronic_warfare_ship: '电子战舰', ew_ship: '电子战舰',
+  mine_layer: '布雷舰', stealth_ship: '隐形舰', freighter: '货运船',
+  transport_shuttle: '运输穿梭机', tanker: '油船', bulk_carrier: '大型货运船',
+  ore_freighter: '矿石货运船', mining_vessel: '采矿船', miner: '采矿船',
+  gas_collector: '气体收集船', ice_drill: '冰钻船', excavator: '挖掘机',
+  repair_ship: '维修船', lunar_shuttle: '月球穿梭机', command_vessel: '指挥舰',
+};
+function normShipKey(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+function shipLabel(ship, fallback) {
+  const isObj = ship && typeof ship === 'object';
+  const key = isObj ? (ship.key || ship.shipKey) : null;
+  const raw = isObj ? (ship.name || ship.shipName) : ship;
+  return SHIP_NAME_LABELS[normShipKey(key)] || SHIP_NAME_LABELS[normShipKey(raw)] || raw || fallback || '';
+}
+
 // Ship-build queue items across both yards (planetary "Shipyard" + "Orbital"
 // Shipyard). Item: { shipName, quantity, completed, isRepair, operation, endsAt,
 // status }. qty shown is remaining (quantity − completed).
 function shipQueueItems(shipyard) {
   const pull = (arr, yard) => (arr || []).map(it => ({
     yard,
-    name: it.shipName || it.shipKey || '舰船',
+    name: shipLabel({ key: it.shipKey, name: it.shipName }, '舰船'),
     qty: Math.max(0, (it.quantity || 0) - (it.completed || 0)) || it.quantity || 1,
     repair: it.isRepair || it.operation === 'repair',
     ends: it.endsAt || null,

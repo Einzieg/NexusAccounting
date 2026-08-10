@@ -8,7 +8,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { clearAvailStrip, editFleetDialog, fuelEstimate, rememberSelection, rememberedSelections, renderAvailStrip, uiLabel } from '../common.js';
+import { clearAvailStrip, editFleetDialog, fmtCountdown, fuelEstimate, makeMissionBar, normalizeRetreatThreshold, rememberSelection, rememberedSelections, renderAvailStrip, serverTravelTimeFactor, shipDisplayName, showLeaderRetryNotice, templateRegularShips, templateRetreatThreshold, templateWantsLeader, uiLabel } from '../common.js';
 
 let iconBase = '';
 // asteroid fieldType → resource icon + label
@@ -30,9 +30,9 @@ const REC_SHIP = {
 };
 const REC_SHIP_LABELS = {
   'Mining Vessel': '采矿船',
-  'Gas Collector': '气体采集船',
-  'Ice Drill': '冰层钻探船',
-  Excavator: '挖掘者',
+  'Gas Collector': '气体收集船',
+  'Ice Drill': '冰钻船',
+  Excavator: '挖掘机',
 };
 const REC_CYCLES = 10;   // ships to clear the field in this many mining cycles
 const EXCAVATOR_BONUS = 1.2;   // +20% fleet extraction capacity when an Excavator is present
@@ -60,13 +60,23 @@ let afPage = 1;
 const AF_PER_PAGE = 25;
 const MINING_DURATION = 600;   // seconds; fixed for asteroid mining missions
 const ASTEROID_CACHE_TTL = 15 * 60 * 1000;   // fields drain fast — refetch after 15 min
+const LOCAL_FUEL_K = 0.0496;
+const LOCAL_FUEL_BASE = 3.48;
+const LOCAL_TRAVEL_SCALE = 10;   // map-distance seconds at speed 1; matches observed game timing closely
+let afTravelTimeFactor = 1;
 let afTemplates = [];        // fleet templates, managed in the Fleets tab
 let afMap = null;            // { byId: {id→{x,y,sectorId,visibility}}, systems: [...] }, cached
 const sectorSystems = {};   // sectorId → systems[] (name/zone/planetCount), cached
-let afAllShips = [];        // every ship def: [{ shipDefId, name, imageUrl }]
+let afAllShips = [];        // every ship def: [{ shipDefId, key, name, imageUrl, fuelRate, speed }]
+let afAvailableShips = {};  // current source planet: shipDefId -> available quantity
+let afAccountShips = null;  // account total: shipDefId -> available quantity
+let afAccountShipsGen = 0;
 let afAvailTimer = null;    // periodic availability poll
 let afMyUsername = null;    // this player's username, to spot fields already mined by us
 let afMiningFieldIds = new Set();   // fieldIds with an in-flight/active mine mission
+let afMiningMissions = [];   // current mine missions from /api/fleet/missions
+let afMiningTicks = [];      // progress-bar updaters for the current mining list
+let afTick = 0;
 const allianceTagCache = {};   // player name → alliance tag (or null), session cache
 
 // Resolve alliance tags for a set of player names not already cached.
@@ -81,7 +91,9 @@ async function resolveAllianceTags(names) {
 export async function initAsteroidsTab() {
   if (afInited) return;
   afInited = true;
-  iconBase = `${(await globalThis.nexusStorage.getActiveServer()).origin}/images/resources/`;
+  const server = await globalThis.nexusStorage.getActiveServer();
+  iconBase = `${server.origin}/images/resources/`;
+  afTravelTimeFactor = serverTravelTimeFactor(server);
   const status = document.getElementById('af-progress');
   status.textContent = '正在加载…';
 
@@ -111,6 +123,7 @@ export async function initAsteroidsTab() {
     pSel.value = savedSel['af-planet'];   // remembered planet survives tabs/sessions
   }
 
+  setupAfTypeSelect();
   drawTypeIcons();
   drawZoneToggles();
   await loadLiveSearch();   // populate ls-* fields + button from saved config
@@ -128,9 +141,17 @@ export async function initAsteroidsTab() {
     }
   });
 
-  pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); });
+  pSel.addEventListener('change', () => { rememberSelection('af-planet', pSel.value); setRefFromMap(pSel.value); renderAsteroids(); updateAfAvail(); renderTemplateSummary(); });
   document.getElementById('af-scan').addEventListener('click', scan);
-  document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); computeFuel(); });
+  document.getElementById('af-mining-refresh').addEventListener('click', refreshMiningNow);
+  document.getElementById('af-type-select').addEventListener('change', e => {
+    afTypeFilter.clear();
+    if (e.target.value && e.target.value !== '__multi') afTypeFilter.add(e.target.value);
+    localStorage.setItem('nx-af-type-select', e.target.value || '');
+    drawTypeIcons();
+    clearAfScanResultsForTypeChange();
+  });
+  document.getElementById('af-template-select').addEventListener('change', e => { rememberSelection('af-template-select', e.target.value); renderTemplateSummary(); computeFuel(); });
   const excChk = document.getElementById('af-excavator');
   excChk.checked = localStorage.getItem('nx-af-excavator') === '1';
   excChk.addEventListener('change', () => { localStorage.setItem('nx-af-excavator', excChk.checked ? '1' : '0'); renderAsteroids(); });
@@ -146,8 +167,7 @@ export async function initAsteroidsTab() {
   for (const id of ['af-mult-min', 'af-qty-min', 'af-left-min']) {
     document.getElementById(id).addEventListener('input', e => {
       if (parseFloat(e.target.value) < 0) e.target.value = '';   // positive only
-      afPage = 1;
-      renderAsteroids();
+      clearAfScanResultsForCriteriaChange();
     });
   }
 
@@ -163,25 +183,39 @@ export async function initAsteroidsTab() {
 
   // Ship catalog (names + icons) for the availability strip, then start it.
   const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
-  afAllShips = (defs.ships || []).map(s => ({ shipDefId: s.shipDefId, name: s.name, imageUrl: s.imageUrl }));
+  afAllShips = (defs.ships || []).map(s => ({
+    shipDefId: s.shipDefId,
+    key: s.key,
+    name: s.name,
+    imageUrl: s.imageUrl,
+    fuelRate: s.fuelRate || 0,
+    speed: s.speed || s.shipSpeed || s.travelSpeed || 0,
+  }));
+  updateAfAccountShips();
   updateAfAvail();
+  renderTemplateSummary();
+  computeFuel();
   if (!afAvailTimer) {
     afAvailTimer = setInterval(() => {
-      if (document.getElementById('asteroids-content').style.display !== 'none') { updateAfAvail(); refreshSlots(); }
-    }, 10000);   // catch returning mining fleets without a reload
+      if (document.getElementById('asteroids-content').style.display === 'none') return;
+      for (const upd of afMiningTicks) upd();
+      if (++afTick % 10 === 0) { updateAfAvail(); refreshSlots(); }
+    }, 1000);   // live progress bars; API refresh stays at 10s
   }
 
-  status.textContent = '请选择要扫描的最近星系数量，然后点击“扫描”。';
+  status.textContent = '请选择目标结果数，然后点击“扫描”。';
 }
 
 // Ships stationed on the selected mining planet, shown above the fields table.
 async function updateAfAvail() {
   const box = document.getElementById('af-avail');
   const planetId = Number(document.getElementById('af-planet').value);
-  if (!planetId || !afAllShips.length) { clearAvailStrip(box); return; }
+  if (!planetId || !afAllShips.length) { afAvailableShips = {}; clearAvailStrip(box); renderTemplateSummary(); return; }
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { clearAvailStrip(box, av.error); return; }
-  renderAvailStrip(box, afAllShips, av.available, '该星球上没有舰船。');
+  if (av.error) { afAvailableShips = {}; clearAvailStrip(box, av.error); renderTemplateSummary(); return; }
+  afAvailableShips = av.available || {};
+  renderAvailStrip(box, afAllShips, afAvailableShips, '该星球上没有舰船。');
+  renderTemplateSummary();
 }
 
 // Galaxy map (all systems with coords + sector id), fetched once and cached.
@@ -228,10 +262,69 @@ function drawTypeInto(boxId, filter, redraw, after) {
     img.addEventListener('click', () => {
       if (filter.has(t.type)) filter.delete(t.type); else filter.add(t.type);
       redraw();
+      if (boxId === 'af-type') {
+        syncAfTypeSelect();
+        clearAfScanResultsForTypeChange();
+      }
       if (after) after();
     });
     box.appendChild(img);
   }
+}
+
+function setupAfTypeSelect() {
+  const sel = document.getElementById('af-type-select');
+  if (!sel) return;
+  sel.textContent = '';
+  const all = document.createElement('option');
+  all.value = '';
+  all.textContent = '全部类型';
+  sel.appendChild(all);
+  const multi = document.createElement('option');
+  multi.value = '__multi';
+  multi.textContent = '多个类型';
+  multi.disabled = true;
+  sel.appendChild(multi);
+  for (const t of FIELD_TYPES) {
+    const o = document.createElement('option');
+    o.value = t.type;
+    o.textContent = t.label;
+    sel.appendChild(o);
+  }
+  const saved = localStorage.getItem('nx-af-type-select');
+  if (saved && FIELD_TYPES.some(t => t.type === saved)) {
+    afTypeFilter.clear();
+    afTypeFilter.add(saved);
+  }
+  syncAfTypeSelect();
+}
+
+function syncAfTypeSelect() {
+  const sel = document.getElementById('af-type-select');
+  if (!sel) return;
+  const types = [...afTypeFilter];
+  sel.value = types.length === 0 ? '' : types.length === 1 ? types[0] : '__multi';
+  if (types.length <= 1) localStorage.setItem('nx-af-type-select', sel.value);
+  else localStorage.removeItem('nx-af-type-select');
+}
+
+function afTypeSelectionText() {
+  if (!afTypeFilter.size) return '全部类型';
+  return [...afTypeFilter]
+    .map(type => FIELD_TYPES.find(t => t.type === type)?.label || uiLabel(type))
+    .join('、');
+}
+
+function clearAfScanResultsForTypeChange() {
+  clearAfScanResultsForCriteriaChange(`矿类型已设为“${afTypeSelectionText()}”，请点击“扫描”重新获取结果。`);
+}
+
+function clearAfScanResultsForCriteriaChange(message = '扫描条件已变更，请点击“扫描”重新获取结果。') {
+  afFields = [];
+  afPage = 1;
+  renderAsteroids();
+  const status = document.getElementById('af-progress');
+  if (status) status.textContent = message;
 }
 
 // Clickable zone toggles, coloured per zone. Empty selection means all zones.
@@ -257,7 +350,7 @@ function drawZoneInto(boxId, filter, redraw, after) {
 
 // Main fields filter: re-render the table on toggle.
 function drawTypeIcons() { drawTypeInto('af-type', afTypeFilter, drawTypeIcons, () => { afPage = 1; renderAsteroids(); }); }
-function drawZoneToggles() { drawZoneInto('af-zone', afZoneFilter, drawZoneToggles, () => { afPage = 1; renderAsteroids(); }); }
+function drawZoneToggles() { drawZoneInto('af-zone', afZoneFilter, drawZoneToggles, () => clearAfScanResultsForCriteriaChange()); }
 // Live-search filter: persist config on toggle (if currently running).
 function drawLsTypeIcons() { drawTypeInto('ls-type', lsTypeFilter, drawLsTypeIcons, saveLiveSearchIfOn); }
 function drawLsZoneToggles() { drawZoneInto('ls-zone', lsZoneFilter, drawLsZoneToggles, saveLiveSearchIfOn); }
@@ -273,7 +366,7 @@ function readLsConfig() {
     multMin: num('ls-mult-min'),
     qtyMin: num('ls-qty-min'),
     leftMin: num('ls-left-min'),
-    near: Math.max(1, Math.min(500, parseInt(document.getElementById('ls-near').value, 10) || 25)),
+    near: Math.max(1, Math.min(10, parseInt(document.getElementById('ls-near').value, 10) || 5)),
     types: [...lsTypeFilter],
     zones: [...lsZoneFilter],
   };
@@ -310,7 +403,7 @@ async function loadLiveSearch() {
     document.getElementById('ls-mult-min').value = cfg.multMin ?? '';
     document.getElementById('ls-qty-min').value = cfg.qtyMin ?? '';
     document.getElementById('ls-left-min').value = cfg.leftMin ?? '';
-    document.getElementById('ls-near').value = cfg.near ?? 25;
+    document.getElementById('ls-near').value = Math.max(1, Math.min(10, parseInt(cfg.near, 10) || 5));
     lsTypeFilter.clear(); (cfg.types || []).forEach(t => lsTypeFilter.add(t));
     lsZoneFilter.clear(); (cfg.zones || []).forEach(z => lsZoneFilter.add(z));
     lsRunning = !!cfg.enabled;
@@ -328,21 +421,22 @@ async function scan() {
   const planetId = Number(document.getElementById('af-planet').value);
   const p = afPlanets.find(x => x.id === planetId);
   if (!p) return;
-  const count = Math.max(1, Math.min(500, parseInt(document.getElementById('af-near').value, 10) || 25));
+  const desiredCount = Math.max(1, Math.min(10, parseInt(document.getElementById('af-near').value, 10) || 5));
+  document.getElementById('af-near').value = String(desiredCount);
 
-  status.textContent = '正在加载星系地图…';
+  status.textContent = `正在加载星系地图… 矿类型：${afTypeSelectionText()}`;
   let map;
   try { map = await loadMap(); } catch (e) { status.textContent = `错误：${e.message}`; return; }
   const src = map.byId[p.systemId];
   if (!src) { status.textContent = '地图上找不到出发星系。'; return; }
   afRefMS = { x: src.x, y: src.y };
 
-  // The N nearest explored systems (asteroid fields need at least partial vis).
+  // Walk explored systems from nearest to farthest until enough matching fields are found.
   const targets = map.systems
-    .filter(s => s.id !== p.systemId && (s.visibility === 'full' || s.visibility === 'partial'))
+    .filter(s => s.visibility === 'full' || s.visibility === 'partial')
     .map(s => ({ s, d: Math.hypot(s.x - src.x, s.y - src.y) }))
     .sort((a, b) => a.d - b.d)
-    .slice(0, count)
+    .slice(0, SCAN_CACHE_MAX)
     .map(o => o.s);
   if (!targets.length) { status.textContent = '附近没有已探索星系。'; return; }
 
@@ -353,10 +447,20 @@ async function scan() {
   btn.textContent = '停止';
   afFields = [];
   afPage = 1;
+  const scanTypeFilter = new Set(afTypeFilter);
+  const scanZoneFilter = new Set(afZoneFilter);
+  const num = (id, dflt) => {
+    const v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? dflt : v;
+  };
+  const multMin = num('af-mult-min', -Infinity);
+  const qtyMin = num('af-qty-min', -Infinity);
+  const leftMin = num('af-left-min', -Infinity);
   let scanned = 0, errors = 0;
   try {
     for (const sys of targets) {
       if (!afRunning) break;
+      if (afFields.length >= desiredCount) break;
       // name/zone/planetCount come from the system's sector (cached per sector).
       let meta;
       try {
@@ -368,24 +472,35 @@ async function scan() {
         data = await getSystemPlanets(sys.id, cache, ASTEROID_CACHE_TTL);
       } catch { errors++; scanned++; continue; }
       for (const f of (data.asteroidFields || [])) {
+        const fieldType = f.fieldType || '—';
+        if (scanTypeFilter.size && !scanTypeFilter.has(fieldType)) continue;
+        const remaining = f.remainingResources ?? null;
+        const total = f.totalResources ?? null;
+        const leftPct = total ? Math.round((remaining / total) * 100) : null;
+        const zone = meta.securityZone || '—';
+        if (scanZoneFilter.size && !scanZoneFilter.has(zone)) continue;
+        if ((f.richness ?? -Infinity) < multMin) continue;
+        if ((remaining ?? -Infinity) < qtyMin) continue;
+        if ((leftPct ?? -Infinity) < leftMin) continue;
         afFields.push({
           fieldId: f.id,
           name: f.name || `#${f.id}`,
           system: meta.name || `#${sys.id}`,
           systemId: sys.id,
-          type: f.fieldType || '—',
+          type: fieldType,
           mult: f.richness ?? null,
-          remaining: f.remainingResources ?? null,
-          total: f.totalResources ?? null,
-          zone: meta.securityZone || '—',
+          remaining,
+          total,
+          zone,
           sx: sys.x, sy: sys.y,
           minerPresent: f.controllerName || null,
           ownerName: (f.outpostShieldMaxHp ?? 0) > 0 ? (f.controllerName || null) : null,
         });
+        if (afFields.length >= desiredCount) break;
       }
       scanned++;
       if (scanned % 10 === 0) {
-        status.textContent = `正在扫描… ${scanned}/${targets.length} 个星系，发现 ${afFields.length} 个小行星带。`;
+        status.textContent = `正在扫描… 已查 ${scanned} 个星系，目标 ${desiredCount} 条，矿类型：${afTypeSelectionText()}，已找到 ${afFields.length} 条。`;
         renderAsteroids();
       }
       await new Promise(r => setTimeout(r, 80)); // be polite to the game API
@@ -406,7 +521,7 @@ async function scan() {
 
   await resolveAllianceTags(afFields.filter(f => f.ownerName).map(f => f.ownerName));
 
-  status.textContent = `完成：在 ${scanned} 个星系中发现 ${afFields.length} 个小行星带` +
+  status.textContent = `完成：按“${afTypeSelectionText()}”从近到远扫描 ${scanned} 个星系，找到 ${afFields.length}/${desiredCount} 条匹配小行星带` +
     (errors ? ` · 因错误跳过 ${errors} 个` : '') + '。';
   renderAsteroids();
 }
@@ -440,6 +555,7 @@ async function refreshTemplates() {
     const o = document.createElement('option');
     o.value = ''; o.textContent = '— 无（请在“舰队模板”中创建）—';
     sel.appendChild(o);
+    renderTemplateSummary();
     return;
   }
   for (const t of afTemplates) {
@@ -448,6 +564,183 @@ async function refreshTemplates() {
     sel.appendChild(o);
   }
   if (want && afTemplates.some(t => String(t.id) === want)) sel.value = want;
+  renderTemplateSummary();
+}
+
+function miningTemplateShips(template) {
+  return templateRegularShips(template, afAllShips);
+}
+
+function miningTemplateAttachLeader(template) {
+  return templateWantsLeader(template, afAllShips);
+}
+
+function miningTemplateRetreatThreshold(template) {
+  return templateRetreatThreshold(template);
+}
+
+async function updateAfAccountShips() {
+  if (!afAllShips.length) return;
+  const gen = ++afAccountShipsGen;
+  let res;
+  try {
+    res = await browser.runtime.sendMessage({ type: 'GET_FLEET', planetId: 'all' });
+  } catch (err) {
+    res = { error: err && err.message ? err.message : String(err) };
+  }
+  if (gen !== afAccountShipsGen) return;
+  if (res?.error) {
+    afAccountShips = null;
+    renderTemplateSummary();
+    return;
+  }
+  const byKey = new Map(afAllShips.map(s => [s.key, s]));
+  const totals = {};
+  for (const [key, qty] of Object.entries(res.fleet || {})) {
+    const def = byKey.get(key);
+    if (!def || def.shipDefId == null) continue;
+    totals[def.shipDefId] = (totals[def.shipDefId] || 0) + (Number(qty) || 0);
+  }
+  afAccountShips = totals;
+  renderTemplateSummary();
+}
+
+function renderTemplateSummary() {
+  const box = document.getElementById('af-template-summary');
+  const sel = document.getElementById('af-template-select');
+  if (!box || !sel) return;
+  const tpl = afTemplates.find(t => String(t.id) === sel.value);
+  box.textContent = '';
+  if (!tpl) {
+    box.style.display = 'none';
+    return;
+  }
+  const ships = miningTemplateShips(tpl);
+  const attachLeader = miningTemplateAttachLeader(tpl);
+  const threshold = miningTemplateRetreatThreshold(tpl);
+  const sourcePlanet = afPlanets.find(p => String(p.id) === String(document.getElementById('af-planet')?.value));
+  const requiredTotal = ships.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0);
+  const fulfilledTotal = ships.reduce((sum, s) => {
+    const have = Number(afAvailableShips[s.shipDefId]) || 0;
+    return sum + Math.min(have, Number(s.quantity) || 0);
+  }, 0);
+  const accountTotal = afAccountShips
+    ? ships.reduce((sum, s) => sum + (Number(afAccountShips[s.shipDefId]) || 0), 0)
+    : null;
+
+  const title = document.createElement('div');
+  title.className = 'af-template-summary-title';
+  const name = document.createElement('strong');
+  name.textContent = `模板：${tpl.name || '未命名模板'}`;
+  const basis = document.createElement('span');
+  basis.textContent = '显示模板数量';
+  const source = document.createElement('span');
+  source.textContent = `出发点：${sourcePlanet ? sourcePlanet.name : '未选择'}`;
+  const total = document.createElement('span');
+  total.textContent = `普通舰可满足 ${fulfilledTotal.toLocaleString()} / 需要 ${requiredTotal.toLocaleString()} 艘` +
+    (accountTotal == null ? '' : ` · 账号总计 ${accountTotal.toLocaleString()} 艘`);
+  title.append(name, basis, source, total);
+  if (attachLeader) {
+    const leader = document.createElement('span');
+    leader.textContent = '指挥舰已编入';
+    title.append(leader);
+  }
+  if (threshold != null) {
+    const retreat = document.createElement('span');
+    retreat.textContent = `护航阈值 ${Math.round(threshold * 100)}%`;
+    title.append(retreat);
+  }
+
+  const list = document.createElement('div');
+  list.className = 'af-template-summary-ships';
+  if (attachLeader) {
+    const chip = document.createElement('div');
+    chip.className = 'af-template-chip leader';
+    const strong = document.createElement('strong');
+    strong.textContent = '指挥舰 × 1';
+    const note = document.createElement('span');
+    note.textContent = '待命状态由派出接口确认';
+    chip.append(strong, note);
+    list.append(chip);
+  }
+  for (const s of ships) {
+    const qty = Number(s.quantity) || 0;
+    const have = Number(afAvailableShips[s.shipDefId]) || 0;
+    const account = afAccountShips ? (Number(afAccountShips[s.shipDefId]) || 0) : null;
+    const def = afAllShips.find(d => Number(d.shipDefId) === Number(s.shipDefId));
+    const chip = document.createElement('div');
+    chip.className = `af-template-chip ${have >= qty ? 'ok' : 'short'}`;
+    const strong = document.createElement('strong');
+    strong.textContent = `${shipDisplayName(def, `#${s.shipDefId}`)} × ${qty.toLocaleString()}`;
+    const local = document.createElement('span');
+    local.className = 'af-template-stat';
+    const owned = document.createElement('span');
+    owned.className = 'af-template-owned';
+    owned.textContent = `出发点拥有 ${have.toLocaleString()}`;
+    const needed = document.createElement('span');
+    needed.className = have >= qty ? 'af-template-needed-ok' : 'af-template-needed';
+    needed.textContent = `需要 ${qty.toLocaleString()}`;
+    local.append(owned, document.createTextNode(' / '), needed);
+    const acct = document.createElement('span');
+    acct.className = 'af-template-stat af-template-total';
+    acct.textContent = `账号总计 ${account == null ? '—' : account.toLocaleString()}`;
+    chip.append(strong, local, acct);
+    list.append(chip);
+  }
+  if (!list.childElementCount) {
+    const empty = document.createElement('span');
+    empty.style.color = '#8b949e';
+    empty.textContent = '该模板未选择舰船。';
+    list.append(empty);
+  }
+  box.append(title, list);
+  box.style.display = 'block';
+}
+
+function recommendedFuelShips(f) {
+  const rec = recommend(f);
+  const ships = rec && rec.shipDefId != null ? [{ shipDefId: rec.shipDefId, quantity: rec.count }] : [];
+  if (afExcavator()) {
+    const exc = afAllShips.find(d => d.name === 'Excavator');
+    if (exc) ships.push({ shipDefId: exc.shipDefId, quantity: 1 });
+  }
+  return ships;
+}
+
+function localAsteroidEstimate(field, ships, attachLeader) {
+  if (!field || !Array.isArray(ships) || !ships.length) return null;
+  const dist = distance(field);
+  if (dist == null) return null;
+  let fuelRate = 0;
+  let slowestSpeed = Infinity;
+  let missingStats = !!attachLeader;
+  for (const s of ships) {
+    const qty = Number(s.quantity) || 0;
+    if (qty <= 0) continue;
+    const def = afAllShips.find(d => Number(d.shipDefId) === Number(s.shipDefId));
+    if (!def) { missingStats = true; continue; }
+    const rate = Number(def.fuelRate) || 0;
+    const speed = Number(def.speed || def.shipSpeed || def.travelSpeed) || 0;
+    if (rate > 0) fuelRate += rate * qty;
+    else missingStats = true;
+    if (speed > 0) slowestSpeed = Math.min(slowestSpeed, speed);
+    else missingStats = true;
+  }
+  if (fuelRate <= 0 && slowestSpeed === Infinity) return null;
+  const baseTravelTime = slowestSpeed < Infinity
+    ? Math.max(60, Math.round((dist * LOCAL_TRAVEL_SCALE) / slowestSpeed))
+    : null;
+  return {
+    distance: dist,
+    fuelCost: fuelRate > 0 ? Math.round(fuelRate * (LOCAL_FUEL_K * dist + LOCAL_FUEL_BASE)) : null,
+    travelTime: baseTravelTime != null ? Math.max(1, Math.round(baseTravelTime * afTravelTimeFactor)) : null,
+    missingStats,
+  };
+}
+
+function distanceTitle(est, fallback) {
+  const raw = est && est.distance != null ? Number(est.distance) : fallback?.distance;
+  return Number.isFinite(raw) ? `距离 ${raw.toFixed(1)} 光年` : '距离未知';
 }
 
 // Open the editable fleet dialog seeded from the ship recommendation (falling
@@ -467,14 +760,17 @@ async function sendMineMission(f) {
   // Seed the editor straight from the selected template — the "Optimise Mining
   // Fleet" button in the dialog is what swaps in the recommended mining ships.
   const tpl = afTemplates.find(t => String(t.id) === document.getElementById('af-template-select').value);
+  const wantsLeader = miningTemplateAttachLeader(tpl);
   const seed = {};
-  for (const [id, q] of Object.entries((tpl && tpl.ships) || {})) seed[Number(id)] = q;
+  for (const s of templateRegularShips(tpl, afAllShips)) seed[s.shipDefId] = s.quantity;
 
-  const rec = recommend(f);
-  const recShips = rec && rec.shipDefId != null ? [{ shipDefId: rec.shipDefId, quantity: rec.count }] : [];
+  const recShips = recommendedFuelShips(f);
   if (afExcavator()) {
     const exc = afAllShips.find(d => d.name === 'Excavator');
-    if (exc && (avail[exc.shipDefId] || 0) > 0) recShips.push({ shipDefId: exc.shipDefId, quantity: 1 });
+    if (exc && !(avail[exc.shipDefId] || 0)) {
+      const i = recShips.findIndex(s => s.shipDefId === exc.shipDefId);
+      if (i >= 0) recShips.splice(i, 1);
+    }
   }
   const miningShipIds = new Set(afAllShips.filter(d => MINING_SHIPS.has(d.name)).map(d => d.shipDefId));
 
@@ -482,22 +778,169 @@ async function sendMineMission(f) {
     title: `开采 ${f.name}`,
     subtitle: `目标：${f.name}（${f.system}）\n出发点：${planet ? planet.name : planetId}`,
     avail, seed, recShips, miningShipIds,
+    attachLeader: wantsLeader,
+    escortRetreatThreshold: miningTemplateRetreatThreshold(tpl),
+    retreatThresholdOptional: true,
+    leaderOptional: true,
+    templates: afTemplates,
+    selectedTemplateId: tpl?.id,
+    templateShipDefs: afAllShips,
+    templateMemoryKey: 'asteroid-mining',
+    templateMemoryScope: String(planetId),
   });
-  if (!ships || !ships.length) return;   // cancelled or emptied
+  if (!ships || (!ships.length && !ships.attachLeader)) return;   // cancelled or emptied
+  if (ships.templateId != null) {
+    const sel = document.getElementById('af-template-select');
+    if (sel && afTemplates.some(t => String(t.id) === String(ships.templateId))) {
+      sel.value = String(ships.templateId);
+      rememberSelection('af-template-select', sel.value);
+      computeFuel();
+    }
+  }
 
   status.textContent = `正在派往 ${f.name}…`;
+  const attachLeader = !!ships.attachLeader;
+  const escortRetreatThreshold = normalizeRetreatThreshold(ships.escortRetreatThreshold);
   const res = await browser.runtime.sendMessage({
     type: 'SEND_MINE',
     sourcePlanetId: planetId,
     targetFieldId: f.fieldId,
     ships,
     miningDuration: MINING_DURATION,
+    attachLeader,
+    escortRetreatThreshold,
+    hangarAssignments: {},
   });
+  showLeaderRetryNotice(res);
   status.textContent = res.error ? `派出失败：${res.error}` : `舰队已派往 ${f.name} ✓`;
   if (!res.error) {
     afMiningFieldIds.add(f.fieldId);   // optimistic — GET_MISSIONS can lag right after the send
     renderAsteroids();
-    refreshSlots(); updateAfAvail();
+    refreshSlots(); updateAfAvail(); updateAfAccountShips();
+  }
+}
+
+function miningFieldForMission(m) {
+  const fieldId = Number(missionValue(m, 'targetFieldId', 'targetAsteroidFieldId',
+    'target_field_id', 'target_asteroid_field_id', 'fieldId', 'field_id',
+    'targetField.id', 'asteroidField.id'));
+  return Number.isFinite(fieldId) ? afFields.find(f => Number(f.fieldId) === fieldId) : null;
+}
+
+function missionValue(obj, ...paths) {
+  for (const path of paths) {
+    const value = path.split('.').reduce((o, key) => (o && o[key] != null ? o[key] : null), obj);
+    if (value != null && value !== '') return value;
+  }
+  return null;
+}
+
+function miningTargetLabel(m) {
+  const local = miningFieldForMission(m);
+  const fieldId = missionValue(m, 'targetFieldId', 'targetAsteroidFieldId',
+    'target_field_id', 'target_asteroid_field_id', 'fieldId', 'field_id',
+    'targetField.id', 'asteroidField.id');
+  const system = local?.system || missionValue(m, 'targetSystemName', 'systemName',
+    'targetSystem.name', 'target.systemName', 'target.system.name',
+    'target_system_name', 'system_name') ||
+    (m.targetSystemId != null ? `#${m.targetSystemId}` : '');
+  const slotRaw = missionValue(m, 'targetFieldSlot', 'targetAsteroidFieldSlot',
+    'asteroidFieldSlot', 'fieldSlot', 'slot', 'targetFieldIndex',
+    'targetAsteroidFieldIndex', 'asteroidFieldIndex', 'fieldIndex',
+    'target.slot', 'targetField.slot', 'asteroidField.slot', 'raidParams.targetFieldSlot',
+    'target_field_slot', 'target_asteroid_field_slot', 'asteroid_field_slot',
+    'field_slot', 'target_field_index', 'asteroid_field_index', 'field_index');
+  const slot = Number(slotRaw);
+  const derived = system && Number.isFinite(slot) && slot > 0 ? `${system}-AF${slot}` : '';
+  const field = local?.name || derived || missionValue(m, 'targetFieldName', 'targetAsteroidFieldName',
+    'asteroidFieldName', 'fieldName', 'targetName', 'target.name', 'targetField.name',
+    'asteroidField.name', 'target_field_name', 'target_asteroid_field_name',
+    'asteroid_field_name', 'field_name', 'target_name') ||
+    (fieldId != null ? `AF#${fieldId}` : '');
+  if (field && system) return String(field).includes(String(system)) ? field : `${field}（${system}）`;
+  return field || system || `任务 #${m.id ?? '?'}`;
+}
+
+function miningSourceLabel(m) {
+  return missionValue(m, 'sourcePlanetName', 'originPlanetName', 'fromPlanetName',
+    'source.name', 'sourcePlanet.name', 'origin.name', 'from.name',
+    'source_planet_name', 'origin_planet_name', 'from_planet_name') ||
+    (m.sourcePlanetId != null ? `星球 #${m.sourcePlanetId}` : '');
+}
+
+function miningCargoSummary(m) {
+  const cargo = m.cargo || m.resourcesMined || m.resourcesDelivered || m.raidParams?.resources || {};
+  const labels = { ore: '矿石', silicates: '硅酸盐', hydrogen: '氢', alloys: '合金',
+    cryo_ice: '低温冰', plasma_core: '等离子核心', quantum_dust: '量子尘', dark_matter: '暗物质' };
+  const parts = Object.entries(labels)
+    .map(([key, label]) => [label, Number(cargo[key]) || 0])
+    .filter(([, value]) => value > 0)
+    .map(([label, value]) => `${label}: ${value.toLocaleString()}`);
+  return parts.length ? parts.join('  ') : '';
+}
+
+function miningFleetSummary(m) {
+  const fleet = m.fleetComposition || m.fleet || [];
+  const parts = [];
+  if (m.attachLeader || m.leaderAttached || m.commander || m.leaderId) parts.push('1× 指挥舰');
+  for (const s of fleet) {
+    const quantity = s.quantity ?? s.count ?? 1;
+    const def = { key: s.shipKey || s.key, name: s.shipName || s.name };
+    const fallback = s.shipName || s.name || s.shipKey || s.key || (s.shipDefId ? `#${s.shipDefId}` : '舰船');
+    parts.push(`${quantity}× ${shipDisplayName(def, fallback)}`);
+  }
+  return parts.join('  ');
+}
+
+function renderMiningTransit() {
+  const box = document.getElementById('af-mining-list');
+  const count = document.getElementById('af-mining-count');
+  if (!box || !count) return;
+  box.textContent = '';
+  afMiningTicks = [];
+  count.textContent = `${afMiningMissions.length} 支采矿中`;
+  if (!afMiningMissions.length) {
+    const d = document.createElement('div');
+    d.style.cssText = 'color:#484f58; padding:4px 0;';
+    d.textContent = '当前没有航行中的采矿舰队。';
+    box.appendChild(d);
+    return;
+  }
+  for (const m of afMiningMissions) {
+    const row = document.createElement('div');
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex; align-items:baseline; gap:8px; font-size:0.85rem; margin-bottom:3px;';
+    const name = document.createElement('span');
+    name.style.color = '#e6edf3';
+    name.textContent = `${miningTargetLabel(m)} · 采矿`;
+    head.appendChild(name);
+    const source = miningSourceLabel(m);
+    if (source) {
+      const src = document.createElement('span');
+      src.style.cssText = 'color:#8b949e; font-size:0.78rem;';
+      src.textContent = `出发点：${source}`;
+      head.appendChild(src);
+    }
+    row.appendChild(head);
+    const fleet = miningFleetSummary(m);
+    if (fleet) {
+      const ships = document.createElement('div');
+      ships.style.cssText = 'color:#8b949e; font-size:0.78rem; margin-bottom:3px;';
+      ships.textContent = fleet;
+      row.appendChild(ships);
+    }
+    const cargo = miningCargoSummary(m);
+    if (cargo) {
+      const cargoLine = document.createElement('div');
+      cargoLine.style.cssText = 'color:#e3b341; font-size:0.78rem; margin-bottom:3px;';
+      cargoLine.textContent = cargo;
+      row.appendChild(cargoLine);
+    }
+    const bar = makeMissionBar(m);
+    bar.el.style.marginTop = '0';
+    row.appendChild(bar.el);
+    box.appendChild(row);
+    afMiningTicks.push(bar.upd);
   }
 }
 
@@ -508,9 +951,25 @@ async function refreshSlots() {
   if (mi.maxFleetSlots != null) {
     document.getElementById('af-slots').textContent = `舰队槽位 ${(mi.missions || []).length}/${mi.maxFleetSlots}`;
   }
-  afMiningFieldIds = new Set(
-    (mi.missions || []).filter(m => m.missionType === 'mine' && m.targetFieldId != null).map(m => m.targetFieldId));
+  afMiningMissions = (mi.missions || []).filter(m => m.missionType === 'mine');
+  afMiningFieldIds = new Set(afMiningMissions
+    .map(m => Number(missionValue(m, 'targetFieldId', 'targetAsteroidFieldId',
+      'target_field_id', 'target_asteroid_field_id', 'fieldId', 'field_id',
+      'targetField.id', 'asteroidField.id')))
+    .filter(Number.isFinite));
+  renderMiningTransit();
   renderAsteroids();
+}
+
+async function refreshMiningNow() {
+  const btn = document.getElementById('af-mining-refresh');
+  if (btn) { btn.disabled = true; btn.textContent = '刷新中…'; }
+  try {
+    await refreshSlots();
+    await updateAfAvail();
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '刷新'; }
+  }
 }
 
 export function renderAsteroids() {
@@ -537,7 +996,6 @@ export function renderAsteroids() {
       rec, recShips: rec ? rec.count : null,
     };
   });
-  if (afTypeFilter.size) rows = rows.filter(f => afTypeFilter.has(f.type));
   if (afZoneFilter.size) rows = rows.filter(f => afZoneFilter.has(f.zone));
 
   const num = (id, dflt) => {
@@ -571,6 +1029,7 @@ export function renderAsteroids() {
   for (const f of pageRows) {
     const tr = document.createElement('tr');
     tr.dataset.system = f.systemId;
+    tr.dataset.field = f.fieldId;
     if ((afMyUsername && f.minerPresent === afMyUsername) || afMiningFieldIds.has(f.fieldId)) {
       tr.style.background = 'rgba(63,185,80,0.15)';   // already mining / claimed by us
     }
@@ -597,7 +1056,8 @@ export function renderAsteroids() {
       owner,
       f.distance == null ? '—' : String(f.distance),
       '…',   // fuel cost, filled async
-      f.rec ? `${f.rec.count}× ${REC_SHIP_LABELS[f.rec.name] || f.rec.name}` : '—',
+      '…',   // travel time, filled async
+      f.rec ? `${f.rec.count}× ${REC_SHIP_LABELS[f.rec.name] || shipDisplayName(f.rec.name)}` : '—',
     ];
     cells.forEach((v, i) => {
       const td = document.createElement('td');
@@ -606,6 +1066,7 @@ export function renderAsteroids() {
       else if (i === 2 && f.mult != null) td.style.color = '#e3b341';
       else if (i === 5) td.style.color = ZONE_COLOR[f.zone] || '#8b949e';
       else if (i === 8) td.className = 'af-fuel';
+      else if (i === 9) td.className = 'af-time';
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -614,32 +1075,84 @@ export function renderAsteroids() {
   computeFuel();
 }
 
-// Fill the Fuel Cost column: one fuel-estimate per visible row for the selected
-// template's ships, from the chosen planet. A generation guard discards results
-// from a superseded render/selection.
+// Fill the Fuel Cost column: selected template first, otherwise the row's
+// recommended mining fleet. A generation guard discards superseded renders.
 let afFuelGen = 0;
 async function computeFuel() {
   const gen = ++afFuelGen;
   const planetId = Number(document.getElementById('af-planet').value);
-  const cells = () => document.querySelectorAll('#af-results-tbody td.af-fuel');
-  const tpl = afTemplates.find(t => String(t.id) === document.getElementById('af-template-select').value);
-  const ships = Object.entries(tpl ? tpl.ships : {})
-    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
-    .filter(s => s.quantity > 0);
-  if (!ships.length) {
-    cells().forEach(c => { c.textContent = '—'; c.title = tpl ? '模板中没有舰船' : '未选择模板'; });
+  const server = await globalThis.nexusStorage.getActiveServer().catch(() => null);
+  afTravelTimeFactor = serverTravelTimeFactor(server);
+  const fuelCells = () => document.querySelectorAll('#af-results-tbody td.af-fuel');
+  const timeCells = () => document.querySelectorAll('#af-results-tbody td.af-time');
+  if (!planetId) {
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = '尚未选择出发星球'; });
+    timeCells().forEach(c => { c.textContent = '—'; c.title = '尚未选择出发星球'; });
     return;
   }
+  const tpl = afTemplates.find(t => String(t.id) === document.getElementById('af-template-select').value);
+  const attachLeader = miningTemplateAttachLeader(tpl);
+  const templateShips = miningTemplateShips(tpl);
   for (const tr of document.querySelectorAll('#af-results-tbody tr')) {
     if (gen !== afFuelGen) return;
     const cell = tr.querySelector('.af-fuel');
+    const timeCell = tr.querySelector('.af-time');
     const sysId = Number(tr.dataset.system);
-    if (!cell || !sysId) continue;
-    const est = await fuelEstimate(planetId, sysId, ships);
+    if (!cell || !Number.isFinite(sysId)) continue;
+    cell.textContent = '…';
+    cell.title = '正在估算燃料成本';
+    cell.style.color = '';
+    if (timeCell) {
+      timeCell.textContent = '…';
+      timeCell.title = '正在估算单程航行时间';
+      timeCell.style.color = '';
+    }
+    const fieldId = Number(tr.dataset.field);
+    const field = afFields.find(f => f.fieldId === fieldId);
+    let ships = templateShips;
+    let estimateLabel = tpl && (templateShips.length || attachLeader) ? '舰队模板' : '推荐舰船';
+    if (!ships.length) ships = field ? recommendedFuelShips(field) : [];
+    if (!ships.length && !attachLeader) {
+      cell.textContent = '—';
+      cell.title = '没有可用于估算的模板或推荐舰船';
+      if (timeCell) { timeCell.textContent = '—'; timeCell.title = cell.title; }
+      continue;
+    }
+    let est;
+    try {
+      est = await fuelEstimate(planetId, sysId, ships, attachLeader);
+    } catch (err) {
+      est = { error: err && err.message ? err.message : String(err) };
+    }
     if (gen !== afFuelGen) return;
-    if (est.error) { cell.textContent = '—'; cell.title = est.error; continue; }
-    cell.textContent = `${est.fuelCost}`;
-    cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`;
+    const fallback = (est?.error || est?.fuelCost == null || est?.travelTime == null || est?.distance == null)
+      ? localAsteroidEstimate(field, ships, attachLeader)
+      : null;
+    const fuelCost = est?.fuelCost ?? fallback?.fuelCost;
+    const travelTime = est?.travelTime ?? fallback?.travelTime;
+    const usedFallback = fallback && (est?.error || est?.fuelCost == null || est?.travelTime == null || est?.distance == null);
+    if (fuelCost == null && travelTime == null) {
+      const reason = est?.error || '燃料估算接口没有返回燃料或时间，且本地舰船数据不足';
+      cell.textContent = '?';
+      cell.title = reason;
+      cell.style.color = '#ff7b72';
+      if (timeCell) { timeCell.textContent = '?'; timeCell.title = reason; timeCell.style.color = '#ff7b72'; }
+      continue;
+    }
+    cell.textContent = fuelCost != null ? `${fuelCost}` : '—';
+    cell.style.color = est?.inRange === false ? '#ff7b72' : '';
+    const titleBits = [
+      est?.inRange === false ? '超出航程' : distanceTitle(est, fallback),
+      usedFallback ? `按${estimateLabel}本地估算` : `按${estimateLabel}估算`,
+    ];
+    if (usedFallback && est?.error) titleBits.push(`接口错误：${est.error}`);
+    if (usedFallback && fallback?.missingStats) titleBits.push('部分舰船/指挥舰缺少本地燃料或速度字段');
+    cell.title = titleBits.join('；');
+    if (timeCell) {
+      timeCell.textContent = travelTime != null ? fmtCountdown(travelTime * 1000) : '—';
+      timeCell.title = travelTime != null
+        ? `单程航行时间；${usedFallback ? `按${estimateLabel}本地估算` : `按${estimateLabel}估算`}`
+        : cell.title;
+    }
   }
 }

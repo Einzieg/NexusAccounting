@@ -1,6 +1,6 @@
 // Tech Tree tab — research from /api/research, laid out as a dependency graph.
 
-import { fmt, store, confirmDialog, escapeHtml, uiLabel } from '../common.js';
+import { fmt, store, confirmDialog, escapeHtml, techDisplayDescription, techDisplayName, uiLabel } from '../common.js';
 import { loadAll } from '../dashboard.js';
 
 export const BRANCH_ORDER = ['military', 'science', 'economy'];
@@ -10,6 +10,9 @@ export const STATUS_LEGEND = [
   ['researching', '#e3b341', '研究中'], ['available', '#8b949e', '可研究'],
   ['locked', '#484f58', '未解锁'],
 ];
+const STATUS_LABELS = {
+  maxed: '已满级', researched: '已研究', researching: '研究中', available: '可研究', locked: '未解锁',
+};
 export const SVGNS = 'http://www.w3.org/2000/svg';
 export let ttPinned = null;   // pinned tech key (click to lock highlight)
 export let ttDragged = false;  // a pan just happened — suppress the trailing click
@@ -20,6 +23,10 @@ export let ttResearch = [];   // last rendered research array (for the queue pla
 export let ttLevelsRef = {};  // key → current level
 export let ttTargetsLoaded = false;
 export let ttResources = null;   // { ore, silicates, …, oreRate, … } or { error }
+let ttQueueOpen = false;
+let ttFitOnRender = true;
+let ttViewportW = 0;
+let ttResizeTimer = null;
 
 // ── Research queue planner ──────────────────────────────────────────────────
 export function techByKey(key) { return ttResearch.find(t => t.key === key); }
@@ -30,6 +37,7 @@ export async function loadTargets() {
   const { tt_queue_targets } = await globalThis.nexusStorage.get('tt_queue_targets');
   ttTargets = Array.isArray(tt_queue_targets) ? tt_queue_targets : [];
   ttTargetsLoaded = true;
+  setQueueOpen(ttTargets.length > 0);
   renderQueue();
   updateQueueBadges();
 }
@@ -66,6 +74,7 @@ export function maxToQueue(key) {
   if (max <= (ttLevelsRef[key] || 0)) return;
   const ex = ttTargets.find(x => x.key === key);
   if (ex) ex.level = max; else ttTargets.push({ key, level: max });
+  setQueueOpen(true);
   renderQueue(); updateQueueBadges(); saveTargets();
 }
 
@@ -153,7 +162,7 @@ export async function launchResearch(t, level) {
   if (!planet) { alert('没有空闲的研究槽位，所有星球都在进行研究。'); return; }
   const eta = fmtDuration(baseTimeAt(t, level) * planet.mult);
   const cost = `${fmt(costAt(t, 'costOre', level))} 矿石 · ${fmt(costAt(t, 'costSilicates', level))} 硅酸盐 · ${fmt(costAt(t, 'costHydrogen', level))} 氢`;
-  if (!await confirmDialog(`在 ${planet.name} 开始研究 ${t.name}（${level} 级）？\n\n花费：${cost}\n耗时：${eta}`)) return;
+  if (!await confirmDialog(`在 ${planet.name} 开始研究 ${techDisplayName(t)}（${level} 级）？\n\n花费：${cost}\n耗时：${eta}`)) return;
   const res = await browser.runtime.sendMessage({
     type: 'START_RESEARCH', researchId: t.id, planetId: planet.id,
   });
@@ -317,6 +326,7 @@ export function addToQueue(key) {
   const next = Math.min(base + 1, t.maxLevel || 1);
   if (next <= (ttLevelsRef[key] || 0)) return;   // already maxed
   if (ex) ex.level = next; else ttTargets.push({ key, level: next });
+  setQueueOpen(true);
   renderQueue();
   updateQueueBadges();
   saveTargets();
@@ -390,6 +400,25 @@ export function updateQueueBadges() {
     el.classList.toggle('queued', inPlan.has(el.dataset.key)));
 }
 
+function updateQueueToggle() {
+  const main = document.getElementById('tt-main');
+  const aside = document.getElementById('tt-queue');
+  const button = document.getElementById('tt-queue-toggle');
+  const steps = buildPlan().length;
+  if (main) main.classList.toggle('queue-collapsed', !ttQueueOpen);
+  if (aside) aside.setAttribute('aria-hidden', String(!ttQueueOpen));
+  if (button) {
+    button.setAttribute('aria-expanded', String(ttQueueOpen));
+    button.textContent = steps ? `研究队列（${steps}）` : '研究队列';
+  }
+}
+
+function setQueueOpen(open, fit = true) {
+  ttQueueOpen = !!open;
+  updateQueueToggle();
+  if (fit && ttCanvas) requestAnimationFrame(() => fitTreeWidth(false));
+}
+
 export function fmtDuration(sec) {
   sec = Math.round(sec);
   const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600);
@@ -431,6 +460,7 @@ export function renderQueue() {
   const list = document.getElementById('tt-queue-list');
   const totalsEl = document.getElementById('tt-queue-totals');
   const clearBtn = document.getElementById('tt-queue-clear');
+  updateQueueToggle();
   if (!list) return;
   const { items, finishTime, slots, now } = computeSchedule();
   list.textContent = '';
@@ -470,7 +500,7 @@ export function renderQueue() {
         ? ` <span class="tt-lab" title="需要 ${t.requiredLabLevel} 级研究实验室">🔒${t.requiredLabLevel} 级</span>` : '';
       row.className = 'tt-queue-item' + (it.isTarget ? '' : ' dep');
       row.innerHTML = `<span class="seq">${i + 1}</span>` +
-        `<span class="nm">${escapeHtml(t.name)} ${it.level} 级${labTag}<br><span class="eta">${done}</span></span>`;
+        `<span class="nm">${escapeHtml(techDisplayName(t))} ${it.level} 级${labTag}<br><span class="eta">${done}</span></span>`;
       if (isLaunchable(t, it.level)) {
         const go = document.createElement('button');
         go.className = 'go'; go.textContent = '▶';
@@ -544,6 +574,30 @@ export function applyZoom() {
   ttCanvas.style.transform = `scale(${ttZoom})`;
   ttCanvas.style.marginRight = `${(ttZoom - 1) * ttCanvasW}px`;
   ttCanvas.style.marginBottom = `${(ttZoom - 1) * ttCanvasH}px`;
+  const label = document.getElementById('tt-zoom-label');
+  if (label) label.textContent = `${Math.round(ttZoom * 100)}%`;
+}
+
+export function fitTreeWidth(resetPosition = true) {
+  const vp = document.getElementById('techtree');
+  if (!vp || !ttCanvasW || !vp.clientWidth) return;
+  const contentY = vp.scrollTop / ttZoom;
+  ttViewportW = vp.clientWidth;
+  ttZoom = Math.max(0.5, Math.min(1, (vp.clientWidth - 24) / ttCanvasW));
+  applyZoom();
+  vp.scrollLeft = 0;
+  vp.scrollTop = resetPosition ? 0 : contentY * ttZoom;
+}
+
+function setZoom(next) {
+  const vp = document.getElementById('techtree');
+  if (!vp || !ttCanvas) return;
+  const contentX = (vp.scrollLeft + vp.clientWidth / 2) / ttZoom;
+  const contentY = (vp.scrollTop + vp.clientHeight / 2) / ttZoom;
+  ttZoom = Math.min(2.5, Math.max(0.3, next));
+  applyZoom();
+  vp.scrollLeft = contentX * ttZoom - vp.clientWidth / 2;
+  vp.scrollTop = contentY * ttZoom - vp.clientHeight / 2;
 }
 
 // Status of a tech given the level map (key → level) for requirement checks.
@@ -558,11 +612,11 @@ export function techStatus(t, levels) {
 }
 
 export function techTooltip(t, levels) {
-  const lines = [t.description || ''];
+  const lines = [techDisplayDescription(t)];
   if (t.requirements?.length) {
     lines.push('前置条件：' + t.requirements.map(r => {
       const met = r.type !== 'research' || (levels[r.key] || 0) > 0;
-      return `${techByKey(r.key)?.name || uiLabel(r.key)}${met ? ' ✓' : ' ✗'}`;
+      return `${techDisplayName(techByKey(r.key) || r.key)}${met ? ' ✓' : ' ✗'}`;
     }).join(', '));
   }
   if (t.requiredLabLevel) lines.push(`研究实验室等级 ${t.requiredLabLevel}`);
@@ -622,7 +676,7 @@ export function computeDepths(research) {
   return depth;
 }
 
-export const NODE_W = 165, NODE_H = 60, GAP_X = 40, GAP_Y = 120, PAD = 10;
+export const NODE_W = 178, NODE_H = 68, GAP_X = 28, GAP_Y = 84, PAD = 14;
 
 export function renderTechTreeTab() {
   const research = store.research || [];
@@ -891,7 +945,7 @@ export function renderTechTreeTab() {
     lbl.setAttribute('class', 'tt-tier');
     lbl.setAttribute('x', PAD);
     lbl.setAttribute('y', rowMidY(r));
-    lbl.textContent = `层 ${r}`;
+    lbl.textContent = `第 ${r + 1} 层`;
     svg.appendChild(lbl);
   }
 
@@ -910,9 +964,9 @@ export function renderTechTreeTab() {
     path.setAttribute('marker-end', 'url(#tt-arrow)');
     path.style.stroke = BRANCH_COLORS[e.branch] || '#30363d';
     if (e.met) {
-      path.style.strokeOpacity = '0.85';
+      path.style.strokeOpacity = '0.48';
     } else {
-      path.style.strokeOpacity = '0.35';
+      path.style.strokeOpacity = '0.16';
       path.style.strokeDasharray = '4 3';
     }
     svg.appendChild(path);
@@ -924,19 +978,26 @@ export function renderTechTreeTab() {
   const nodeEls = {};   // key → element
   for (const t of shown) {
     const p = pos[t.key];
+    const status = techStatus(t, levels);
     const node = document.createElement('div');
-    node.className = `tt-node ${techStatus(t, levels)}`;
+    node.className = `tt-node ${status}`;
     node.style.left = `${p.x}px`;
     node.style.top = `${p.y}px`;
     node.style.borderTop = `3px solid ${BRANCH_COLORS[t.branch] || '#30363d'}`;
     node.title = techTooltip(t, levels);
     const name = document.createElement('div');
     name.className = 'tt-node-name';
-    name.textContent = t.name;
+    name.textContent = techDisplayName(t);
+    const meta = document.createElement('div');
+    meta.className = 'tt-node-meta';
     const lvl = document.createElement('div');
     lvl.className = 'tt-node-level';
     lvl.textContent = `${uiLabel(t.branch)} · ${t.level || 0}/${t.maxLevel || 1}`;
-    node.append(name, lvl);
+    const state = document.createElement('span');
+    state.className = `tt-node-status ${status}`;
+    state.textContent = STATUS_LABELS[status] || status;
+    meta.append(lvl, state);
+    node.append(name, meta);
     if (!t.isMaxed) {
       const add = document.createElement('div');
       add.className = 'tt-add' + (planKeys.has(t.key) ? ' queued' : '');
@@ -995,7 +1056,8 @@ export function renderTechTreeTab() {
     const q = raw.trim().toLowerCase();
     if (!q) { ttPinned = null; clearHighlight(); return; }
     ttPinned = null;
-    const hits = shown.filter(t => t.name.toLowerCase().includes(q));
+    const hits = shown.filter(t => [techDisplayName(t), t.name, t.key]
+      .some(v => String(v || '').toLowerCase().includes(q)));
     const set = new Set(hits.map(t => t.key));
     for (const [k, el] of Object.entries(nodeEls)) {
       el.classList.toggle('tt-dim', !set.has(k));
@@ -1017,7 +1079,14 @@ export function renderTechTreeTab() {
 
   container.appendChild(canvas);
   ttCanvas = canvas; ttCanvasW = width; ttCanvasH = height;
-  applyZoom();
+  const viewportChanged = ttViewportW && Math.abs(container.clientWidth - ttViewportW) > 24;
+  ttViewportW = container.clientWidth;
+  if (ttFitOnRender || viewportChanged) {
+    ttFitOnRender = false;
+    fitTreeWidth();
+  } else {
+    applyZoom();
+  }
   if (!ttTargetsLoaded) loadTargets(); else renderQueue();
   if (!ttResources) fetchResources();
   if (searchEl.value) applySearch(searchEl.value);   // reapply after re-render
@@ -1034,17 +1103,31 @@ export function renderLegend() {
   el.innerHTML =
     `<span class="tt-leg-group">分支：${branches}</span>` +
     `<span class="tt-leg-group">状态：${status}</span>` +
-    `<span class="tt-leg-group tt-leg-muted">实线表示前置条件已满足 · 虚线表示未满足 · 点击科技可固定其关系链</span>`;
+    `<span class="tt-leg-group tt-leg-muted">拖动画布浏览 · 滚轮缩放 · 实线表示前置已满足 · 虚线表示未满足 · 点击科技可固定关系链</span>`;
 }
 
 document.getElementById('tt-queue-clear').addEventListener('click', () => {
   ttTargets = []; renderQueue(); updateQueueBadges();
 });
-document.getElementById('tt-branch').addEventListener('change', () => { ttZoom = 1; renderTechTreeTab(); });
-document.getElementById('tt-fit').addEventListener('click', () => {
-  const vp = document.getElementById('techtree');
-  ttZoom = ttCanvasW ? Math.min(1, vp.clientWidth / ttCanvasW) : 1;
-  applyZoom();
+document.getElementById('tt-branch').addEventListener('change', () => {
+  ttZoom = 1;
+  ttFitOnRender = true;
+  renderTechTreeTab();
+});
+document.getElementById('tt-fit').addEventListener('click', () => fitTreeWidth());
+document.getElementById('tt-zoom-out').addEventListener('click', () => setZoom(ttZoom / 1.15));
+document.getElementById('tt-zoom-in').addEventListener('click', () => setZoom(ttZoom * 1.15));
+document.getElementById('tt-queue-toggle').addEventListener('click', () => setQueueOpen(!ttQueueOpen));
+document.getElementById('tt-queue-close').addEventListener('click', () => setQueueOpen(false));
+updateQueueToggle();
+
+window.addEventListener('resize', () => {
+  clearTimeout(ttResizeTimer);
+  ttResizeTimer = setTimeout(() => {
+    const vp = document.getElementById('techtree');
+    if (!ttCanvas || !vp || vp.offsetParent === null || Math.abs(vp.clientWidth - ttViewportW) <= 24) return;
+    fitTreeWidth(false);
+  }, 100);
 });
 
 // Click-drag panning + wheel zoom of the tech tree viewport.
@@ -1081,7 +1164,7 @@ document.getElementById('tt-fit').addEventListener('click', () => {
     const py = e.clientY - rect.top + vp.scrollTop;
     const cx = px / ttZoom, cy = py / ttZoom;            // unscaled canvas coords
     const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-    ttZoom = Math.min(2.5, Math.max(0.2, ttZoom * factor));
+    ttZoom = Math.min(2.5, Math.max(0.3, ttZoom * factor));
     applyZoom();
     vp.scrollLeft = cx * ttZoom - (e.clientX - rect.left);
     vp.scrollTop = cy * ttZoom - (e.clientY - rect.top);

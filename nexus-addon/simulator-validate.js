@@ -2,7 +2,7 @@
 
 import { shipDefs, runSimulations } from './engine.js';
 import { makeStatCard } from './simulator.js';   // circular: function, used only in the handler
-import { uiLabel } from './common.js';
+import { shipDisplayName, uiLabel } from './common.js';
 
 // ── Engine validation against recorded raids ───────────────────────────────
 
@@ -17,7 +17,7 @@ function fleetArrayToMap(arr) {
 }
 
 function fleetLabel(arr) {
-  return (arr || []).map(i => `${i.quantity}× ${shipDefs[i.key]?.name || uiLabel(i.key)}`).join('、');
+  return (arr || []).map(i => `${i.quantity}× ${shipDefs[i.key] ? shipDisplayName(shipDefs[i.key]) : uiLabel(i.key)}`).join('、');
 }
 
 document.getElementById('btn-validate').addEventListener('click', async function () {

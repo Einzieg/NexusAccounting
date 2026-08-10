@@ -2,7 +2,7 @@
 // both kinds share one background store (exp_*), tagged per-record by `kind`.
 
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, uiLabel, windowActive, zeroCell, zoneCell } from '../common.js';
+import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, editFleetDialog, fillResourceCards, filterZone, fmt, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, normalizeRetreatThreshold, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, showLeaderRetryNotice, store, templateRegularShips, templateRetreatThreshold, templateWantsLeader, uiLabel, windowActive, zeroCell, zoneCell } from '../common.js';
 
 export let chartExpeditions, chartExpComp;
 
@@ -149,6 +149,8 @@ async function resolveExpeditionShips(planetId) {
   if (av.error) return { error: av.error };
 
   let wanted, name;
+  let attachLeader = false;
+  let escortRetreatThreshold = null;
   if (preset) {
     wanted = preset.ships
       .map(([key, quantity]) => ({ shipDefId: (eAllShips.find(s => s.key === key) || {}).shipDefId, quantity }))
@@ -157,18 +159,20 @@ async function resolveExpeditionShips(planetId) {
   } else {
     const tpl = eTemplates.find(t => String(t.id) === document.getElementById('e-launch-template').value);
     if (!tpl) return { error: '未选择舰队模板，请先在“舰队模板”中创建。' };
-    wanted = Object.entries(tpl.ships || {}).map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }));
+    wanted = templateRegularShips(tpl, eAllShips);
     name = tpl.name;
+    attachLeader = templateWantsLeader(tpl, eAllShips);
+    escortRetreatThreshold = templateRetreatThreshold(tpl);
   }
   wanted = wanted.filter(s => s.quantity > 0);
-  if (!wanted.length) return { error: `“${name}”中没有舰船。` };
+  if (!wanted.length && !attachLeader) return { error: `“${name}”中没有舰船。` };
 
   const seed = Object.fromEntries(wanted.map(s => [s.shipDefId, s.quantity]));
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
-  if (!ships.length) return { error: `该星球上没有“${name}”中的任何舰船。` };
-  return { ships, seed, avail: av.available, name };
+  if (!ships.length && !attachLeader) return { error: `该星球上没有“${name}”中的任何舰船。` };
+  return { ships, seed, avail: av.available, name, attachLeader, escortRetreatThreshold };
 }
 
 async function updateExpeditionAvail() {
@@ -240,13 +244,19 @@ async function launchExpedition() {
     title: '发起远征',
     subtitle: `出发点：${planet ? planet.name : planetId}\n区域：${uiLabel(zone)} · 深度：${depth}\n舰队：${r.name}`,
     avail: r.avail, seed: r.seed,
+    attachLeader: !!r.attachLeader,
+    escortRetreatThreshold: r.escortRetreatThreshold,
+    retreatThresholdOptional: r.escortRetreatThreshold != null,
   });
-  if (!ships || !ships.length) return;   // cancelled or emptied
+  if (!ships || (!ships.length && !ships.attachLeader)) return;   // cancelled or emptied
 
   status.textContent = '正在发起…';
   const res = await browser.runtime.sendMessage({
     type: 'SEND_EXPEDITION', sourcePlanetId: planetId, ships, zone, depth,
+    attachLeader: !!ships.attachLeader,
+    escortRetreatThreshold: normalizeRetreatThreshold(ships.escortRetreatThreshold ?? r.escortRetreatThreshold),
   });
+  showLeaderRetryNotice(res);
   if (res.error) { status.textContent = `发起失败：${res.error}`; return; }
   status.textContent = '远征已发起 ✓';
   updateExpeditionAvail();

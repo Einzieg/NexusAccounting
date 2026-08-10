@@ -14,7 +14,7 @@
 
 import { SCAN_CACHE_MAX, getSystemPlanets } from './finder.js';
 import { loadFleetTemplates } from './fleets.js';
-import { RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, store, windowActive, zeroCell } from '../common.js';
+import { COMMAND_VESSEL_CHIP, RESOURCE_SERIES, appendExtraResourceCards, applySort, attachSortable, clearAvailStrip, computeRawLossCost, computeSeries, confirmDialog, fillResourceCards, filterZone, fmt, fmtCountdown, fuelForMode, getLabelKey, getMode, inWindowRange, makeMissionBar, makeResourceDoughnut, makeResourceLineChart, makeStatCard, periodLabelFor, renderAvailStrip, renderPagedTable, rememberSelection, rememberedSelections, retreatThresholdLabel, showLeaderRetryNotice, store, templateRegularShips, templateRetreatThreshold, templateWantsLeader, windowActive, zeroCell } from '../common.js';
 
 const XENO_CACHE_TTL = 24 * 3600 * 1000;   // moon ownership rarely changes
 const XENO_COOLDOWN_MS = 48 * 3600 * 1000; // local cooldown after we survey a moon
@@ -50,6 +50,7 @@ async function findXenoMissionForMoon(moonId) {
 let inited = false;
 let xnPlanets = [];
 let xnTemplates = [];
+let xnAllShips = [];
 let xnMap = null;          // { systems, byId } from GET_GALAXY_MAP, cached
 let xnRunning = false;
 let xnMissions = [];       // in-flight xeno_survey missions
@@ -147,9 +148,13 @@ export async function initXenoTab() {
   const status = document.getElementById('xn-progress');
   status.textContent = '加载中…';
 
-  const planets = await browser.runtime.sendMessage({ type: 'GET_PLANETS' });
+  const [planets, defs] = await Promise.all([
+    browser.runtime.sendMessage({ type: 'GET_PLANETS' }),
+    browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
+  ]);
   if (planets.error) { status.textContent = `错误：${planets.error}`; inited = false; return; }
   xnPlanets = (planets.planets || []).filter(p => p.systemId != null);
+  xnAllShips = defs.ships || [];
 
   const pSel = document.getElementById('xn-planet');
   pSel.textContent = '';
@@ -215,18 +220,24 @@ async function refreshTemplates() {
 async function templateShips(templateId, planetId) {
   const tpl = xnTemplates.find(t => String(t.id) === templateId);
   if (!tpl) return { error: '尚未选择舰队模板，请先在“舰队模板”中创建。' };
-  const wanted = Object.entries(tpl.ships || {})
-    .map(([shipDefId, quantity]) => ({ shipDefId: Number(shipDefId), quantity }))
-    .filter(s => s.quantity > 0);
-  if (!wanted.length) return { error: `模板“${tpl.name}”中没有舰船。` };
+  const attachLeader = templateWantsLeader(tpl, xnAllShips);
+  const escortRetreatThreshold = templateRetreatThreshold(tpl);
+  const wanted = templateRegularShips(tpl, xnAllShips);
+  if (!wanted.length && !attachLeader) return { error: `模板“${tpl.name}”中没有舰船。` };
 
   const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
   if (av.error) return { error: av.error };
   const ships = wanted
     .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
     .filter(s => s.quantity > 0);
-  if (!ships.length) return { error: `该星球没有模板“${tpl.name}”中的舰船。` };
-  return { ships, short: wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity), name: tpl.name };
+  if (!ships.length && !attachLeader) return { error: `该星球没有模板“${tpl.name}”中的舰船。` };
+  return {
+    ships,
+    short: wanted.some(s => (av.available[s.shipDefId] || 0) < s.quantity),
+    name: tpl.name,
+    attachLeader,
+    escortRetreatThreshold,
+  };
 }
 
 async function updateAvail() {
@@ -238,7 +249,8 @@ async function updateAvail() {
     browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' }),
   ]);
   if (av.error) { clearAvailStrip(box, av.error); return; }
-  renderAvailStrip(box, defs.ships || [], av.available, '该星球没有舰船。');
+  if (!defs.error) xnAllShips = defs.ships || xnAllShips;
+  renderAvailStrip(box, xnAllShips, av.available, '该星球没有舰船。');
 }
 
 async function loadMap() {
@@ -402,12 +414,17 @@ async function launchRuinsSurvey() {
   const sysName = found.system.name || `#${found.system.id}`;
   if (!await confirmDialog(`发起遗迹勘测？\n\n目标：${found.moon.name}（${sysName}，距离 ${found.distance}）\n` +
     `出发地：${planet.name}\n模板：${r.name}` +
-    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''), r.ships)) return;
+    (r.escortRetreatThreshold != null ? `\n护航撤回阈值：${retreatThresholdLabel(r.escortRetreatThreshold)}` : '') +
+    (r.short ? '\n\n⚠ 模板中的部分舰船数量不足，将派出当前可用舰船。' : ''),
+    r.attachLeader ? [COMMAND_VESSEL_CHIP, ...r.ships] : r.ships)) return;
 
   status.textContent = `正在向 ${found.moon.name} 发起勘测…`;
   const res = await browser.runtime.sendMessage({
     type: 'SEND_XENO_SURVEY', sourcePlanetId: planetId, targetMoonId: found.moon.id, ships: r.ships,
+    attachLeader: !!r.attachLeader,
+    escortRetreatThreshold: r.escortRetreatThreshold,
   });
+  showLeaderRetryNotice(res);
   if (res.error) { status.textContent = `发起失败：${res.error}`; return; }
   status.textContent = `舰队已派往 ${found.moon.name} ✓`;
   updateAvail();

@@ -6,7 +6,7 @@
 import {
   PER_PAGE, fmt, escapeHtml, makeStatCard, store, zoneCell, dayKey,
   computeResourcesLost, combinedLost, emptyResources,
-  RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI, uiLabel,
+  RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI, shipDisplayName, uiLabel,
 } from '../common.js';
 
 // Resource cost of a record's ship losses (destroyed + half-cost repair).
@@ -72,7 +72,10 @@ async function loadShipImages() {
   shipImgByName = {};   // set before await so we only fetch once
   try {
     const defs = await browser.runtime.sendMessage({ type: 'GET_SHIP_DEFS' });
-    for (const s of (defs.ships || [])) if (s.name && s.imageUrl) shipImgByName[s.name] = s.imageUrl;
+    for (const s of (defs.ships || [])) if (s.name && s.imageUrl) {
+      shipImgByName[s.name] = s.imageUrl;
+      shipImgByName[shipDisplayName(s)] = s.imageUrl;
+    }
     if (document.getElementById('battles-content')) renderBattlesTab();
   } catch { /* no login / offline — names render without icons */ }
 }
@@ -82,6 +85,8 @@ async function loadShipImages() {
 function shipImgUrl(name) {
   if (!shipImgByName || !name) return null;
   if (shipImgByName[name]) return shipImgByName[name];
+  const zhBase = name.replace(/^(虫洞|海盗|失控|异星|精英|远古)+/, '');
+  if (zhBase !== name && shipImgByName[zhBase]) return shipImgByName[zhBase];
   const base = name.replace(/^(Wormhole\s+)?(Pirate|Alien|Rogue|Elite)\s+/i, '');
   return (base !== name && shipImgByName[base]) || null;
 }
@@ -90,13 +95,13 @@ function shipImgUrl(name) {
 function imgHtml(name) {
   const url = shipImgUrl(name);
   if (url) return `<img src="${url}" alt="" style="width:16px;height:16px;object-fit:contain;vertical-align:middle;margin-right:3px">`;
-  return `<span title="${name || '未知舰船'}" style="display:inline-block;width:16px;height:16px;border:1px solid #30363d;border-radius:3px;color:#8b949e;font-size:10px;line-height:14px;text-align:center;vertical-align:middle;margin-right:3px">?</span>`;
+  return `<span title="${escapeHtml(shipDisplayName(name) || '未知舰船')}" style="display:inline-block;width:16px;height:16px;border:1px solid #30363d;border-radius:3px;color:#8b949e;font-size:10px;line-height:14px;text-align:center;vertical-align:middle;margin-right:3px">?</span>`;
 }
 
 // shipDefId→qty detail → [{ name, qty }] using the ship catalog.
 function detailToNames(detail) {
   return Object.entries(detail || {}).map(([id, qty]) => ({
-    name: (store.ships?.[id] || {}).name || `#${id}`, qty,
+    name: shipDisplayName(store.ships?.[id], `#${id}`), qty,
   }));
 }
 // Wormhole encounters store no enemy roster, so rebuild the enemies you fought
@@ -108,17 +113,20 @@ function enemyFromRounds(rounds) {
   for (const rd of (rounds || [])) for (const k of (rd.atk_killed || [])) {
     if (k.name && k.qty) m[k.name] = (m[k.name] || 0) + k.qty;
   }
-  return Object.entries(m).map(([name, qty]) => ({ name, qty }));
+  return Object.entries(m).map(([name, qty]) => ({ name: shipDisplayName(name), qty }));
 }
 // [{ key, quantity }] fleet → [{ name, qty }] via a key→def index.
 function fleetToNames(fleet, byKey) {
-  return (fleet || []).map(f => ({ name: f.name || (byKey[f.key] || {}).name || f.key, qty: f.quantity || 1 }));
+  return (fleet || []).map(f => ({
+    name: f.name ? shipDisplayName(f.name) : shipDisplayName(byKey[f.key], f.key),
+    qty: f.quantity || 1,
+  }));
 }
 // Expedition/wormhole loss array is either { shipDefId, quantity } or { key, lost }.
 function rawLossToNames(arr, byKey) {
   return (arr || []).map(i => ({
-    name: i.shipDefId != null ? ((store.ships?.[i.shipDefId] || {}).name || `#${i.shipDefId}`)
-                              : ((byKey[i.key] || {}).name || i.key),
+    name: i.shipDefId != null ? shipDisplayName(store.ships?.[i.shipDefId], `#${i.shipDefId}`)
+                              : shipDisplayName(byKey[i.key], i.key),
     qty: i.quantity ?? i.lost ?? 0,
   }));
 }
@@ -245,7 +253,7 @@ function outcomeColor(o) {
 // Download the given battle rows as CSV (the current filtered/sorted view).
 function exportBattlesCsv(rows) {
   const fleetStr = list => (list || []).filter(x => x.qty).map(x => `${x.qty}x ${x.name}`).join('; ');
-  const killsStr = ks => (ks || []).filter(k => k.qty).map(k => `${k.qty} ${k.name}`).join(', ');
+  const killsStr = ks => (ks || []).filter(k => k.qty).map(k => `${k.qty} ${shipDisplayName(k.name)}`).join(', ');
   // One line per round, from your perspective (youAttacker picks which combat side is you).
   const roundsStr = (rounds, ya) => (rounds || []).map(rd => {
     const yDmg = ya ? rd.atk_dmg : rd.def_dmg, eDmg = ya ? rd.def_dmg : rd.atk_dmg;
@@ -297,7 +305,10 @@ function numTd(v) {
   else { const s = document.createElement('span'); s.className = 'zero'; s.textContent = '—'; td.appendChild(s); }
   return td;
 }
-function shipHtml(x) { return `${imgHtml(x.name)}${x.qty}× ${escapeHtml(x.name)}`; }
+function shipHtml(x) {
+  const name = shipDisplayName(x.name);
+  return `${imgHtml(name)}${x.qty}× ${escapeHtml(name)}`;
+}
 function fleetLine(label, list) {
   const items = (list || []).filter(x => x.qty);
   if (!items.length) return null;

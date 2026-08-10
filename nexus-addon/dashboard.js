@@ -21,6 +21,55 @@ import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
 import { getEventBreakdownForMode, getResourcesLostForMode, getSeriesForMode, getTotalsForMode, populateEventOptions, renderByEventChart, renderCollected, renderEventsChart, renderLost, renderResourceChart, renderTable, setCurrentPage } from './tabs/surveys.js';
 import { renderTechTreeTab } from './tabs/techtree.js';
 
+let changelogTextPromise = null;
+
+function currentBuildLabel() {
+  return document.getElementById('build-version')?.textContent.trim() || browser.runtime.getManifest().version;
+}
+
+function currentBuildVersion() {
+  return currentBuildLabel().replace(/^v/i, '').split('+')[0] || browser.runtime.getManifest().version;
+}
+
+async function readChangelogText() {
+  if (!changelogTextPromise) {
+    changelogTextPromise = fetch(browser.runtime.getURL('CHANGELOG.md'))
+      .then(r => r.ok ? r.text() : Promise.reject(new Error(`CHANGELOG ${r.status}`)));
+  }
+  return changelogTextPromise;
+}
+
+function changelogSection(md, version = '') {
+  const normalized = String(version || '').replace(/^v/i, '').split('+')[0];
+  if (normalized) {
+    const escapedVersion = normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = md.match(new RegExp(`## \\[${escapedVersion}\\][^\\n]*\\n([\\s\\S]*?)(?=\\n## \\[|$)`));
+    if (m) return m[1].trim();
+  }
+  const latest = md.match(/## \[[^\]]+\][^\n]*\n([\s\S]*?)(?=\n## \[|$)/);
+  return latest ? latest[1].trim() : '';
+}
+
+async function buildUpdateNotesBody(version = currentBuildVersion()) {
+  const frag = document.createDocumentFragment();
+  const build = document.createElement('div');
+  build.textContent = `当前构建：${currentBuildLabel()}`;
+  build.style.cssText = 'margin-bottom:10px;color:#8b949e';
+  frag.append(build);
+  let section = '详细信息请参阅 CHANGELOG.md。';
+  try {
+    section = changelogSection(await readChangelogText(), version) || section;
+  } catch { /* keep fallback */ }
+  frag.append(renderMarkdown(section));
+  return frag;
+}
+
+async function showUpdateNotes(version = currentBuildVersion(), title = `${currentBuildLabel()} 更新内容`) {
+  infoDialog(title, await buildUpdateNotesBody(version));
+}
+
+document.getElementById('build-version')?.addEventListener('click', () => showUpdateNotes());
+
 export async function loadAll() {
   const server = await globalThis.nexusStorage.getActiveServer();
   document.getElementById('server-select').value = server.key;
@@ -459,16 +508,17 @@ maybeShowWhatsNew();
 // Show the latest changelog section once after an update (flag set by the
 // background's onInstalled handler).
 async function maybeShowWhatsNew() {
-  const { whatsnew_pending } = await globalThis.nexusStorage.get('whatsnew_pending');
-  if (!whatsnew_pending) return;
+  const manifestVersion = browser.runtime.getManifest().version;
+  const { whatsnew_pending, whatsnew_seen_version, whatsnew_seen_build } =
+    await globalThis.nexusStorage.get(['whatsnew_pending', 'whatsnew_seen_version', 'whatsnew_seen_build']);
+  const buildLabel = currentBuildLabel();
+  const buildVersion = currentBuildVersion();
+  const targetVersion = buildVersion || whatsnew_pending || (whatsnew_seen_version !== manifestVersion ? manifestVersion : '');
+  if (!whatsnew_pending && whatsnew_seen_build === buildLabel) return;
+  if (!targetVersion) return;
   await globalThis.nexusStorage.remove('whatsnew_pending');
-  let body = '详细信息请参阅 CHANGELOG.md。';
-  try {
-    const md = await (await fetch(browser.runtime.getURL('CHANGELOG.md'))).text();
-    const m = md.match(/## \[[^\]]+\][^\n]*\n([\s\S]*?)(?=\n## \[|$)/);
-    if (m) body = renderMarkdown(m[1].trim());
-  } catch { /* keep fallback */ }
-  infoDialog(`v${whatsnew_pending} 更新内容`, body);
+  await globalThis.nexusStorage.set({ whatsnew_seen_version: targetVersion, whatsnew_seen_build: buildLabel });
+  await showUpdateNotes(targetVersion, `${buildLabel} 更新内容`);
 }
 
 globalThis.nexusStorage.onChanged.addListener((changes, area) => {

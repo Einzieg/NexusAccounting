@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Nexus Accounting 助手",
-  "version": "1.8.1",
+  "version": "1.8.4",
   "description": "适用于 Nexus Legacy NX-S0 与 NX-NF 的数据统计、舰队规划和游戏内辅助工具。",
   "author": "Verrok",
   "homepage_url": "https://github.com/Verroq/NexusAccounting",
   "permissions": [
     "storage",
+    "scripting",
     "alarms",
     "downloads",
     "webRequest",
@@ -32,7 +33,7 @@
   "content_scripts": [
     {
       "matches": ["https://s0.nexuslegacy.space/*", "https://nf.nexuslegacy.space/*"],
-      "js": ["server-storage.js"],
+      "js": ["game-api-bridge.js", "server-storage.js"],
       "run_at": "document_start"
     },
     {

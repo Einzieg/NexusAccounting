@@ -29,6 +29,7 @@ const ALARM = 'nexus-scrape';
 const INTERVAL_MIN = 15;
 // Bump this when stored data shape changes; add a MIGRATIONS entry for it.
 const SCHEMA_VERSION = 10;
+const LEADER_RETRY_NOTICE = '指挥舰存在其他任务中，已经改为未编入再次出发。';
 
 // ── Setup ──────────────────────────────────────────────────────────────────
 
@@ -55,12 +56,13 @@ browser.alarms.onAlarm.addListener(alarm => {
 });
 
 // ── Asteroid live search ───────────────────────────────────────────────────
-// Scans the N nearest explored systems every 5 minutes (background alarm, runs
-// regardless of focus) and fires a system notification when a field newly
-// matches the saved filter. Mirrors tabs/asteroids.js scan(), API-only.
+// Scans nearest explored systems every 5 minutes until the saved target result
+// count is met, then fires a system notification when a field newly matches the
+// saved filter. Mirrors tabs/asteroids.js scan(), API-only.
 const LS_ALARM = 'nexus-livesearch';
 const LS_INTERVAL_MIN = 5;
 const LS_MAX_SYSTEMS = 150;            // cap so a background scan finishes inside the SW budget
+const LS_MAX_RESULTS = 10;
 const LS_REQ_DELAY_MS = 40;            // polite spacing between API calls
 const LS_ABORT_AFTER_ERRORS = 6;       // bail the scan after this many consecutive API failures
 const lsSectorCache = new Map();       // sectorId → { at, systems }, reused across scans
@@ -118,17 +120,18 @@ async function liveSearchScan() {
     const src = (map.systems || []).find(s => s.id === planet.systemId);
     if (!src) return;
 
-    const want = Math.max(1, Math.min(LS_MAX_SYSTEMS, cfg.near || 25));
+    const want = Math.max(1, Math.min(LS_MAX_RESULTS, cfg.near || 5));
     const targets = (map.systems || [])
-      .filter(s => s.id !== src.id && (s.visibility === 'full' || s.visibility === 'partial'))
+      .filter(s => s.visibility === 'full' || s.visibility === 'partial')
       .map(s => ({ s, d: Math.hypot(s.x - src.x, s.y - src.y) }))
       .sort((a, b) => a.d - b.d)
-      .slice(0, want)
+      .slice(0, LS_MAX_SYSTEMS)
       .map(o => o.s);
 
     const matches = [];
     let errStreak = 0;
     for (const sys of targets) {
+      if (matches.length >= want) break;
       let sector;
       try { sector = await lsSectorSystems(sys.sectorId); }
       catch { if (++errStreak >= LS_ABORT_AFTER_ERRORS) break; continue; }
@@ -153,6 +156,7 @@ async function liveSearchScan() {
             zone,
             controllerName: f.controllerName || null,
           });
+          if (matches.length >= want) break;
         }
       }
       await new Promise(r => setTimeout(r, LS_REQ_DELAY_MS));   // be polite to the game API
@@ -235,40 +239,48 @@ function handleMessage(msg) {
   if (msg.type === 'GET_SURVEY_COOLDOWNS') return apiGet('/api/fleet/survey-cooldowns');
   if (msg.type === 'GET_SURVEY_REPORTS') return apiGet('/api/fleet/survey-reports');
   if (msg.type === 'SEND_MINE') {
-    return gamePost('/api/fleet/mine', {
+    return postFleetMission('/api/fleet/mine', withEscortRetreatThreshold({
       sourcePlanetId: msg.sourcePlanetId, targetFieldId: msg.targetFieldId,
       ships: msg.ships, miningDuration: msg.miningDuration,
-    });
+      attachLeader: !!msg.attachLeader,
+      hangarAssignments: msg.hangarAssignments || {},
+    }, msg));
   }
   if (msg.type === 'SEND_SURVEY') {
-    return gamePost('/api/fleet/survey', {
+    return postFleetMission('/api/fleet/survey', withEscortRetreatThreshold({
       sourcePlanetId: msg.sourcePlanetId, targetSystemId: msg.targetSystemId, ships: msg.ships,
-    });
+      attachLeader: !!msg.attachLeader,
+    }, msg));
   }
   if (msg.type === 'SEND_INVESTIGATE') {
-    return gamePost('/api/fleet/investigate', {
+    return postFleetMission('/api/fleet/investigate', withEscortRetreatThreshold({
       sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
-    });
+      attachLeader: !!msg.attachLeader,
+    }, msg));
   }
   if (msg.type === 'COLLECT_DEBRIS') {
-    return gamePost('/api/fleet/collect-debris', {
+    return postFleetMission('/api/fleet/collect-debris', withEscortRetreatThreshold({
       sourcePlanetId: msg.sourcePlanetId, debrisId: msg.debrisId, ships: msg.ships,
-    });
+      attachLeader: !!msg.attachLeader,
+    }, msg));
   }
   if (msg.type === 'COLLECT_SALVAGE') {
-    return gamePost('/api/fleet/collect-salvage', {
+    return postFleetMission('/api/fleet/collect-salvage', withEscortRetreatThreshold({
       sourcePlanetId: msg.sourcePlanetId, reportId: msg.reportId, ships: msg.ships,
-    });
+      attachLeader: !!msg.attachLeader,
+    }, msg));
   }
   if (msg.type === 'SEND_EXPEDITION') {
-    return gamePost('/api/fleet/expedition', {
+    return postFleetMission('/api/fleet/expedition', withEscortRetreatThreshold({
       sourcePlanetId: msg.sourcePlanetId, ships: msg.ships, zone: msg.zone, depth: msg.depth,
-    });
+      attachLeader: !!msg.attachLeader,
+    }, msg));
   }
   if (msg.type === 'SEND_XENO_SURVEY') {
-    return gamePost('/api/fleet/xeno-survey', {
+    return postFleetMission('/api/fleet/xeno-survey', withEscortRetreatThreshold({
       sourcePlanetId: msg.sourcePlanetId, targetMoonId: msg.targetMoonId, ships: msg.ships,
-    });
+      attachLeader: !!msg.attachLeader,
+    }, msg));
   }
   if (msg.type === 'GET_PLANETS') return getPlanets();
   if (msg.type === 'REBUILD_AGGREGATES') return enqueue(rebuildAggregates).then(() => ({ ok: true }));
@@ -281,6 +293,7 @@ function handleMessage(msg) {
   if (msg.type === 'GET_SECTOR_SYSTEMS') return apiGet(`/api/galaxy/sectors/${msg.sectorId}/systems`);
   if (msg.type === 'GET_PLAYER_ALLIANCE_TAG') return getPlayerAllianceTag(msg.name);
   if (msg.type === 'GET_AUTH_ME') return apiGet('/api/auth/me');
+  if (msg.type === 'GET_LEADERSHIP') return apiGet('/api/leadership');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
   if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
@@ -291,6 +304,66 @@ function handleMessage(msg) {
   if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
   if (msg.type === 'SET_LIVE_SEARCH') return setLiveSearch(msg.config);
   if (msg.type === 'STOP_LIVE_SEARCH') return stopLiveSearch();
+}
+
+function normalizeEscortRetreatThreshold(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const ratio = n > 1 ? n / 100 : n;
+  return Math.min(1, Math.max(0.01, ratio));
+}
+
+function withEscortRetreatThreshold(payload, msg) {
+  const threshold = normalizeEscortRetreatThreshold(msg.escortRetreatThreshold);
+  if (threshold != null) payload.escortRetreatThreshold = threshold;
+  return payload;
+}
+
+function fleetErrorText(res) {
+  if (!res || typeof res !== 'object') return '';
+  const parts = [];
+  const visit = (value, depth = 0) => {
+    if (value == null || depth > 3) return;
+    if (typeof value !== 'object') {
+      parts.push(String(value));
+      return;
+    }
+    for (const key of ['error', 'message', 'code', 'errorCode', 'statusText']) {
+      if (value[key] != null) parts.push(String(value[key]));
+    }
+    for (const key of ['data', 'body', 'response', 'result']) visit(value[key], depth + 1);
+  };
+  visit(res);
+  return parts.join(' ');
+}
+
+function isLeaderBusyError(res) {
+  const text = fleetErrorText(res);
+  if (!text) return false;
+  if (/leadership\s+command\s+vessel\s+is\s+not\s+ready\s+at\s+the\s+selected\s+source/i.test(text)) return true;
+  const hasLeader = /(command\s*vessel|leader|commander|指挥舰|指揮艦)/i.test(text);
+  const hasBusy = /(busy|assigned|occupied|unavailable|not\s+ready|already\s+on|other\s+mission|任务中|任务占用|正在.*任务|不在.*出发星球|未.*待命)/i.test(text);
+  return hasLeader && hasBusy;
+}
+
+async function postFleetMission(path, payload) {
+  const first = await gamePost(path, payload);
+  if (!payload.attachLeader || !isLeaderBusyError(first)) return first;
+  const retry = await gamePost(path, { ...payload, attachLeader: false });
+  const result = retry && typeof retry === 'object' ? retry : {};
+  if (result.error || !result.ok) {
+    return {
+      ...result,
+      leaderRetryAttempted: true,
+      leaderRetryOriginalError: fleetErrorText(first),
+    };
+  }
+  return {
+    ...result,
+    leaderRetryNotice: LEADER_RETRY_NOTICE,
+    leaderRetryOriginalError: fleetErrorText(first),
+  };
 }
 
 // Launch a research on a planet: POST /api/research/{id}/start { planetId }.
@@ -447,8 +520,42 @@ async function apiGet(path) {
 // ── API ────────────────────────────────────────────────────────────────────
 
 // The game now authenticates API calls with an HttpOnly session cookie rather
-// than the old nexus_token Bearer header. Run requests in a game content script
+// than the legacy Bearer-token header. Run requests in a game content script
 // so they are same-origin and the browser attaches that cookie itself.
+const MISSING_GAME_FETCH_RECEIVER = /Receiving end does not exist|Could not establish connection|No matching message handler|message port closed before a response was received/i;
+
+function isMissingGameFetchReceiver(error) {
+  return MISSING_GAME_FETCH_RECEIVER.test(String(error?.message || error || ''));
+}
+
+async function injectGameApiBridge(tabId) {
+  if (!browser.scripting?.executeScript) {
+    throw new Error('浏览器不支持自动注入游戏 API 桥接脚本，请刷新游戏页面后重试。');
+  }
+  try {
+    await browser.scripting.executeScript({
+      target: { tabId },
+      files: ['game-api-bridge.js'],
+    });
+  } catch (error) {
+    throw new Error(`游戏 API 桥接脚本自动注入失败：${error.message}。请刷新游戏页面后重试。`, { cause: error });
+  }
+}
+
+async function sendGameFetchMessage(tabId, message) {
+  try {
+    const response = await browser.tabs.sendMessage(tabId, message);
+    if (response) return response;
+  } catch (error) {
+    if (!isMissingGameFetchReceiver(error)) throw error;
+  }
+
+  await injectGameApiBridge(tabId);
+  const response = await browser.tabs.sendMessage(tabId, message);
+  if (!response) throw new Error('游戏标签页未返回响应，请刷新该页面后重试。');
+  return response;
+}
+
 async function requestFromGameTab(path, { method = 'GET', body, server = null } = {}) {
   server ||= await gameServer();
   const tabs = await browser.tabs.query({ url: `${server.origin}/*` });
@@ -456,9 +563,7 @@ async function requestFromGameTab(path, { method = 'GET', body, server = null } 
     throw new Error(`请先登录并保持${server.name}（${server.id}）游戏标签页打开。`);
   }
   try {
-    const response = await browser.tabs.sendMessage(tabs[0].id, { type: 'GAME_FETCH', method, path, body });
-    if (!response) throw new Error('游戏标签页未返回响应，请刷新该页面后重试。');
-    return response;
+    return await sendGameFetchMessage(tabs[0].id, { type: 'GAME_FETCH', method, path, body });
   } catch (error) {
     throw new Error(`无法通过 ${server.id} 游戏标签页请求 API：${error.message}`, { cause: error });
   }
@@ -641,6 +746,8 @@ async function getShipDefs() {
       key: s.key || '',
       name: s.name || `#${s.id}`,
       cargoCapacity: s.cargoCapacity || 0,
+      fuelRate: s.fuelRate || 0,
+      speed: s.speed || s.shipSpeed || s.travelSpeed || 0,
       imageUrl: (race && s.key) ? `${server.origin}/api/images/ships/${race}/${s.key}.webp` : null,
       shipClass: s.shipClass || '',
       miningCargo: s.miningCargoCapacity || 0,
@@ -690,7 +797,7 @@ async function fuelEstimateGate() {
 // POST a fleet action (mine / survey / investigate) through the same-origin
 // game-tab request bridge used by API reads.
 async function gamePost(path, body) {
-  if (!(body.ships || []).length) return { error: '尚未选择舰船。' };
+  if (!(body.ships || []).length && !body.attachLeader) return { error: '尚未选择舰船。' };
   if (path === '/api/fleet/fuel-estimate') await fuelEstimateGate();
   const server = await gameServer();
   try {
@@ -2651,6 +2758,7 @@ function routeIntercepted(url, json) {
 // worker itself drives everything through the listeners registered above.
 export {
   apiFetch,
+  postFleetMission,
   processSurveyReports, processPirateReports, processMiningReports,
   processPvpReports,
   processExpeditionReports, processSystemDebris, rebuildAggregates,

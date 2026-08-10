@@ -32,6 +32,27 @@ const RES_LABELS = { ore: '矿石', silicates: '硅酸盐', hydrogen: '氢', all
   cryo_ice: '低温冰', quantum_dust: '量子尘', plasma_core: '等离子核心',
   bio_extract: '生物提取物', dark_matter: '暗物质', antimatter: '反物质' };
 const labelOf = cargo => RES_LABELS[cargo] || cargo.replace(/_/g, ' ');
+const SHIP_NAME_LABELS = {
+  probe: '探测器', spy_probe: '间谍探测器', scout: '侦察舰', fighter: '战斗机',
+  interceptor: '截击机', cruiser: '巡洋舰', torpedo_frigate: '鱼雷护卫舰',
+  carrier: '航母', battleship: '战列舰', missile_cruiser: '导弹巡洋舰',
+  bomber: '轰炸机', dreadnought: '无畏舰', titan: '泰坦',
+  assault_shuttle: '突击穿梭机', hacker_ship: '黑客船', colony_ship: '殖民船',
+  engineer_ship: '工程船', electronic_warfare_ship: '电子战舰', ew_ship: '电子战舰',
+  mine_layer: '布雷舰', stealth_ship: '隐形舰', freighter: '货运船',
+  transport_shuttle: '运输穿梭机', tanker: '油船', bulk_carrier: '大型货运船',
+  ore_freighter: '矿石货运船', mining_vessel: '采矿船', miner: '采矿船',
+  gas_collector: '气体收集船', ice_drill: '冰钻船', excavator: '挖掘机',
+  repair_ship: '维修船', lunar_shuttle: '月球穿梭机', command_vessel: '指挥舰',
+};
+const normShipKey = value => String(value ?? '').trim().toLowerCase().replace(/&/g, 'and')
+  .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+const shipLabel = (ship, fallback) => {
+  const isObj = ship && typeof ship === 'object';
+  const key = isObj ? ship.key : null;
+  const raw = isObj ? ship.name : ship;
+  return SHIP_NAME_LABELS[normShipKey(key)] || SHIP_NAME_LABELS[normShipKey(raw)] || raw || fallback || '';
+};
 
 // The planet currently in view, learned from the page's own /api/planets/{id}
 // GET (relayed by galaxy-fetch-hook.js, MAIN world). Ask for a replay on load in
@@ -171,7 +192,7 @@ async function openPlanner(shipKey) {
   addBtn.onclick = () => {
     if (!state || !window.__nxQueue) return;
     const qty = parseInt(qtyInp.value, 10) || 1;
-    window.__nxQueue.add({ kind: 'ship', key: shipKey, name: state.def.name,
+    window.__nxQueue.add({ kind: 'ship', key: shipKey, name: shipLabel(state.def, shipKey),
       planet: pName.textContent, planetId: currentPlanetId,
       from: state.owned, target: state.owned + qty });
   };
@@ -202,7 +223,7 @@ async function openPlanner(shipKey) {
     qtyInp.disabled = false;
     const owned = ownedQty(fd.fleet, shipKey);
     state = { def, owned, stock: pl };
-    info.textContent = `${def.name} · 当前拥有 ${owned}`;
+    info.textContent = `${shipLabel(def, shipKey)} · 当前拥有 ${owned}`;
     qtyInp.value = '1';
     qtyHint.textContent = `（拥有 ${owned}）`;
     recompute();

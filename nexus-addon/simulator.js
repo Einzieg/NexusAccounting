@@ -9,7 +9,7 @@ import {
 import {
   updateDistanceFromCoords, loadIntelReports, populatePlanetPicker, _resolvedDistanceAU,
 } from './simulator-intel.js';
-import { uiLabel } from './common.js';
+import { shipDisplayName, uiLabel } from './common.js';
 import './simulator-validate.js';   // side effect: wires the Validate button
 
 export function fmt(n) {
@@ -41,7 +41,7 @@ function buildFleetInputs(tbodyId, side) {
 
     const tdName = document.createElement('td');
     tdName.className = 'ship-name';
-    tdName.textContent = def.name;
+    tdName.textContent = shipDisplayName(def);
 
     const tdStats = document.createElement('td');
     tdStats.className = 'ship-stats';
@@ -271,7 +271,7 @@ function renderLossTable(tbodyId, losses) {
     const def = shipDefs[key];
     const tr = document.createElement('tr');
     const survival = l.sent ? ((l.sent - l.lost) / l.sent * 100).toFixed(0) : 0;
-    [def ? def.name : key, fmt(l.sent), l.lost.toFixed(1), `${survival}%`].forEach(v => {
+    [def ? shipDisplayName(def) : shipDisplayName(key), fmt(l.sent), l.lost.toFixed(1), `${survival}%`].forEach(v => {
       const td = document.createElement('td');
       td.textContent = v;
       tr.appendChild(td);

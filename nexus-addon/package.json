@@ -1,12 +1,12 @@
 {
   "name": "nexus-accounting",
-  "version": "1.8.1",
+  "version": "1.8.4",
   "type": "module",
   "description": "适用于 Nexus Legacy NX-S0 与 NX-NF 的数据统计、舰队规划和游戏内辅助工具。",
   "author": "Verrok",
   "license": "MPL-2.0",
   "scripts": {
-    "test": "node --test ../tests/auth.test.js ../tests/engine.test.js ../tests/processors.test.js ../tests/server-storage.test.js"
+    "test": "node --test ../tests/auth.test.js ../tests/common-features.test.js ../tests/engine.test.js ../tests/processors.test.js ../tests/server-storage.test.js"
   },
   "dependencies": {
     "chart.js": "4.5.1"

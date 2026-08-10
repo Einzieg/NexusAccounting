@@ -7,6 +7,29 @@ const ext = (typeof browser !== 'undefined' ? browser : chrome);
 const rt = ext.runtime;
 const DASH_URL = rt.getURL('dashboard.html');
 
+function normalizeRetreatThreshold(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const ratio = n > 1 ? n / 100 : n;
+  return Math.min(1, Math.max(0.01, ratio));
+}
+
+function retreatThresholdLabel(value) {
+  const threshold = normalizeRetreatThreshold(value);
+  return threshold == null ? '未启用' : `${Math.round(threshold * 100)}%`;
+}
+
+function rememberMineAttachLeader(targetFieldId, attachLeader, escortRetreatThreshold = null) {
+  const threshold = normalizeRetreatThreshold(escortRetreatThreshold);
+  globalThis.__nxLastMineAttachLeader = {
+    targetFieldId: Number(targetFieldId),
+    attachLeader: !!attachLeader,
+    escortRetreatThreshold: threshold,
+    at: Date.now(),
+  };
+}
+
 // lucide-style "line chart" icon, matching the other sidebar icons.
 const ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -163,38 +186,6 @@ inject();
 new MutationObserver(() => inject())
   .observe(document.documentElement, { childList: true, subtree: true });
 
-// Run game API requests from the page origin so the browser attaches the same
-// HttpOnly session cookie as the game's own client. The extension never reads or
-// forwards the cookie value itself.
-rt.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type !== 'GAME_FETCH') return;
-  fetch(msg.path, {
-    method: msg.method || 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: msg.body != null ? JSON.stringify(msg.body) : undefined,
-  }).then(async r => {
-    const text = await r.text();
-    const meta = {
-      status: r.status,
-      retryAfter: r.headers.get('Retry-After'),
-      rateLimitRemaining: r.headers.get('RateLimit-Remaining'),
-      rateLimitReset: r.headers.get('RateLimit-Reset'),
-    };
-    if (!r.ok) {
-      let m = `${r.status}`;
-      try { const j = JSON.parse(text); m = j.message || j.error || m; }
-      catch { if (text) m = `${r.status}: ${text.slice(0, 200)}`; }
-      sendResponse({ error: m, ...meta });
-    } else {
-      let data = {};
-      try { data = JSON.parse(text); } catch { /* empty/non-JSON ok */ }
-      sendResponse({ ok: true, data, ...meta });
-    }
-  }).catch(e => sendResponse({ error: e.message }));
-  return true;   // keep the channel open for the async sendResponse
-});
-
 // ── Live-search matches window ──────────────────────────────────────────────
 // Opened when the user clicks an asteroid live-search notification. Floating,
 // draggable, non-modal — same style as the ratio calculator.
@@ -210,7 +201,50 @@ const REC_SHIP = {
   gas: ['Gas Collector', 17], quantum: ['Gas Collector', 3],
   ice: ['Ice Drill', 25], dark: ['Ice Drill', 3],
 };
-const SHIP_LABELS = { 'Mining Vessel': '采矿船', 'Gas Collector': '气体收集船', 'Ice Drill': '采冰船', Excavator: '挖掘机' };
+const SHIP_LABELS = { 'Mining Vessel': '采矿船', 'Gas Collector': '气体收集船', 'Ice Drill': '冰钻船', Excavator: '挖掘机' };
+const NX_SHIP_KEY_LABELS = {
+  probe: '探测器', spy_probe: '间谍探测器', scout: '侦察舰', fighter: '战斗机',
+  interceptor: '截击机', cruiser: '巡洋舰', torpedo_frigate: '鱼雷护卫舰',
+  carrier: '航母', battleship: '战列舰', missile_cruiser: '导弹巡洋舰',
+  bomber: '轰炸机', dreadnought: '无畏舰', titan: '泰坦',
+  assault_shuttle: '突击穿梭机', hacker_ship: '黑客船', colony_ship: '殖民船',
+  engineer_ship: '工程船', electronic_warfare_ship: '电子战舰', ew_ship: '电子战舰',
+  mine_layer: '布雷舰', stealth_ship: '隐形舰', freighter: '货运船',
+  transport_shuttle: '运输穿梭机', tanker: '油船', bulk_carrier: '大型货运船',
+  ore_freighter: '矿石货运船', mining_vessel: '采矿船', miner: '采矿船',
+  gas_collector: '气体收集船', ice_drill: '冰钻船', excavator: '挖掘机',
+  repair_ship: '维修船', lunar_shuttle: '月球穿梭机', command_vessel: '指挥舰',
+};
+const NX_SHIP_PREFIX_LABELS = { wormhole: '虫洞', pirate: '海盗', alien: '异星', rogue: '失控', elite: '精英', ancient: '远古' };
+function nxNormShip(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+function nxShipName(ship, fallback) {
+  const isObj = ship && typeof ship === 'object';
+  const key = isObj ? ship.key : null;
+  const raw = isObj ? ship.name : ship;
+  const byKey = NX_SHIP_KEY_LABELS[nxNormShip(key)];
+  if (byKey) return byKey;
+  const norm = nxNormShip(raw);
+  if (NX_SHIP_KEY_LABELS[norm]) return NX_SHIP_KEY_LABELS[norm];
+  const parts = norm.split('_').filter(Boolean), prefixes = [];
+  while (parts.length && NX_SHIP_PREFIX_LABELS[parts[0]]) prefixes.push(NX_SHIP_PREFIX_LABELS[parts.shift()]);
+  const base = NX_SHIP_KEY_LABELS[parts.join('_')];
+  return base ? `${prefixes.join('')}${base}` : (raw || fallback || '');
+}
+function nxIsCommandVessel(ship) {
+  if (!ship) return false;
+  const key = nxNormShip(ship.key || ship.shipKey || '');
+  const raw = String(ship.name || ship.shipName || '');
+  const name = nxNormShip(raw);
+  return key === 'command_vessel' ||
+    key === 'leader_command_vessel' ||
+    name === 'command_vessel' ||
+    name === 'leader_command_vessel' ||
+    /command\s+vessel/i.test(raw) ||
+    raw.includes('指挥舰');
+}
 const TYPE_LABELS = { ore: '矿石', gas: '气体', ice: '冰', plasma: '等离子', quantum: '量子尘', dark: '暗物质' };
 const REC_CYCLES = 10;
 const EXCAVATOR_BONUS = 1.2;
@@ -246,6 +280,13 @@ function lsConfirm(message, ships, defs, altLabel) {
       const row = document.createElement('div');
       row.style.cssText = 'margin-top:10px;display:flex;flex-wrap:wrap;gap:12px;white-space:normal';
       for (const s of ships) {
+        if (s.isCommandVessel) {
+          const chip = document.createElement('span');
+          chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px;color:#79c0ff;font-weight:600';
+          chip.append(document.createTextNode(`${s.quantity || 1}× ${s.label || '指挥舰'}`));
+          row.append(chip);
+          continue;
+        }
         const def = defs[s.shipDefId] || {};
         const chip = document.createElement('span');
         chip.style.cssText = 'display:inline-flex;align-items:center;gap:6px';
@@ -255,7 +296,7 @@ function lsConfirm(message, ships, defs, altLabel) {
           img.style.cssText = 'width:24px;height:24px;object-fit:contain';
           chip.append(img);
         }
-        chip.append(document.createTextNode(`${s.quantity}× ${def.name || '#' + s.shipDefId}`));
+        chip.append(document.createTextNode(`${s.quantity}× ${nxShipName(def, '#' + s.shipDefId)}`));
         row.append(chip);
       }
       box.append(row);
@@ -297,6 +338,25 @@ function ensureNoSpinStyle() {
   (document.head || document.documentElement).appendChild(st);
 }
 
+function nxFmtDuration(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return `${h}时 ${String(m).padStart(2, '0')}分`;
+  if (m) return `${m}分 ${String(s).padStart(2, '0')}秒`;
+  return `${s}秒`;
+}
+
+function nxTravelTimeFactor() {
+  return /(^|\.)nf\.nexuslegacy\.space$/i.test(String(location.hostname || '')) ? 0.5 : 1;
+}
+
+function nxDisplayTravelTime(seconds) {
+  const n = Number(seconds);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n * nxTravelTimeFactor())) : n;
+}
+
 let fieldsPanel = null;
 async function openFieldsPanel() {
   if (fieldsPanel) { fieldsPanel.remove(); fieldsPanel = null; }
@@ -331,9 +391,10 @@ async function openFieldsPanel() {
   // in the picker below, capped to what the planet actually has. Availability is
   // fetched once; switching template just re-caps and re-renders.
   const planetId = live_search && live_search.planetId;
-  const { fleet_templates, template_selections } =
-    await globalThis.nexusStorage.get(['fleet_templates', 'template_selections']);
+  const { fleet_templates, template_selections, live_search_fleet_memory } =
+    await globalThis.nexusStorage.get(['fleet_templates', 'template_selections', 'live_search_fleet_memory']);
   const templates = (fleet_templates || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical picker
+  let fleetMemory = live_search_fleet_memory || {};
   let avail = {};
   if (planetId) {
     const av = await ext.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
@@ -348,7 +409,20 @@ async function openFieldsPanel() {
     shipDefs[s.shipDefId] = s;
     if (s.name) nameToId[s.name] = s.shipDefId;
   }
+  const commandShipIds = new Set(Object.values(shipDefs).filter(nxIsCommandVessel).map(s => Number(s.shipDefId)));
+  const templateHasLeader = t => !!(t && (t.attachLeader ||
+    Object.entries(t.ships || {}).some(([id, q]) => commandShipIds.has(Number(id)) && Number(q) > 0)));
+  const templateShipEntries = t => Object.entries((t && t.ships) || {})
+    .map(([id, q]) => [Number(id), q])
+    .filter(([id, q]) => Number(q) > 0 && !commandShipIds.has(id));
+  const templateMemory = t => t ? fleetMemory[String(t.id)] || null : null;
+  const templateLeader = t => {
+    const mem = templateMemory(t);
+    return mem && Object.prototype.hasOwnProperty.call(mem, 'attachLeader') ? !!mem.attachLeader : templateHasLeader(t);
+  };
+  const templateRetreatThreshold = t => normalizeRetreatThreshold(t && t.escortRetreatThreshold);
   let tpl = templates.find(t => String(t.id) === String((template_selections || {})['af-template-select'])) || templates[0] || null;
+  let attachLeader = templateLeader(tpl);
   let excavator = localStorage.getItem('nx-ls-excavator') === '1';   // +20% capacity toggle
 
   // "Already mining" row highlight: fields we already control, or with an
@@ -381,6 +455,7 @@ async function openFieldsPanel() {
   function fleetWithRec(recShips) {
     const out = new Map();
     for (const [id, q] of shipsState) {
+      if (commandShipIds.has(id)) continue;
       const def = shipDefs[id];
       if (def && MINING_SHIPS.has(def.name)) continue;   // drop miners; rec supplies them
       out.set(id, q);
@@ -396,15 +471,31 @@ async function openFieldsPanel() {
   const shipsState = new Map();   // shipDefId → wanted qty
   function seedFromTemplate(t) {
     shipsState.clear();
-    for (const [id, q] of Object.entries((t && t.ships) || {})) {
-      const cap = Math.min(q, avail[Number(id)] || 0);
-      if (cap > 0) shipsState.set(Number(id), cap);
+    const mem = templateMemory(t);
+    const entries = mem && mem.ships
+      ? Object.entries(mem.ships).map(([id, q]) => [Number(id), Number(q)])
+      : templateShipEntries(t);
+    for (const [id, q] of entries) {
+      const cap = Math.min(q, avail[id] || 0);
+      if (cap > 0) shipsState.set(id, cap);
     }
+  }
+  function saveFleetMemory() {
+    if (!tpl) return;
+    const key = String(tpl.id);
+    fleetMemory = {
+      ...fleetMemory,
+      [key]: {
+        ships: Object.fromEntries([...shipsState.entries()].map(([id, q]) => [String(id), q])),
+        attachLeader: !!attachLeader,
+      },
+    };
+    globalThis.nexusStorage.set({ live_search_fleet_memory: fleetMemory });
   }
   function effectiveShips() {
     return [...shipsState.entries()]
       .map(([id, q]) => ({ shipDefId: id, quantity: Math.min(q, avail[id] || 0) }))
-      .filter(s => s.quantity > 0);
+      .filter(s => s.quantity > 0 && !commandShipIds.has(s.shipDefId));
   }
   seedFromTemplate(tpl);
 
@@ -456,7 +547,19 @@ async function openFieldsPanel() {
     renderRows();
   });
   excLbl.append(excChk, document.createTextNode('挖掘机 +20%'));
-  pickWrap.append(pickLbl, picker, toggle, excLbl);
+  const leaderLbl = document.createElement('label');
+  leaderLbl.title = '派遣时如果出发星球有待命指挥舰，则随舰队编入。';
+  leaderLbl.style.cssText = 'display:inline-flex;align-items:center;gap:4px;color:#8b949e;font-size:0.85rem;cursor:pointer';
+  const leaderChk = document.createElement('input');
+  leaderChk.type = 'checkbox';
+  leaderChk.checked = attachLeader;
+  leaderChk.addEventListener('change', () => {
+    attachLeader = !!leaderChk.checked;
+    saveFleetMemory();
+    renderRows();
+  });
+  leaderLbl.append(leaderChk, document.createTextNode('指挥舰'));
+  pickWrap.append(pickLbl, picker, toggle, excLbl, leaderLbl);
 
   // Per-ship-type editor — one line per ship available on the planet (or in the
   // template). Editing a quantity updates the fleet used for fuel + sending.
@@ -465,8 +568,8 @@ async function openFieldsPanel() {
   function buildEditor() {
     editorWrap.textContent = '';
     const ids = new Set([
-      ...Object.keys((tpl && tpl.ships) || {}).map(Number),
-      ...Object.keys(avail).map(Number).filter(id => (avail[id] || 0) > 0),
+      ...Object.keys((tpl && tpl.ships) || {}).map(Number).filter(id => !commandShipIds.has(id)),
+      ...Object.keys(avail).map(Number).filter(id => (avail[id] || 0) > 0 && !commandShipIds.has(id)),
     ]);
     if (!ids.size) { editorWrap.textContent = '出发星球没有可用舰船。'; editorWrap.style.color = '#8b949e'; return; }
     editorWrap.style.color = '';
@@ -483,7 +586,7 @@ async function openFieldsPanel() {
         iconCell.append(img);
       }
       const name = document.createElement('span');
-      name.textContent = def.name || `#${id}`; name.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      name.textContent = nxShipName(def, `#${id}`); name.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
       const inp = document.createElement('input');
       inp.type = 'number'; inp.min = '0'; inp.max = String(max); inp.value = String(shipsState.get(id) || 0);
       inp.className = 'nx-no-spin';
@@ -493,6 +596,7 @@ async function openFieldsPanel() {
         if (v > max) v = max;
         inp.value = String(v);
         if (v > 0) shipsState.set(id, v); else shipsState.delete(id);
+        saveFleetMemory();
         renderRows();
       });
       const avLbl = document.createElement('span');
@@ -514,9 +618,10 @@ async function openFieldsPanel() {
     if (!matches.length) { body.textContent = '当前没有匹配结果。'; body.style.color = '#8b949e'; return; }
 
     const table = document.createElement('table');
-    table.style.cssText = 'width:100%;border-collapse:collapse';
+    table.style.cssText = 'width:100%;min-width:640px;border-collapse:collapse';
     table.innerHTML = `<thead><tr style="text-align:left;color:#8b949e;font-size:0.8rem">
       <th style="padding:4px 6px"></th><th style="padding:4px 6px"></th><th style="padding:4px 6px">燃料（星系）</th>
+      <th style="padding:4px 6px">单程航行时间</th>
       <th style="padding:4px 6px">类型</th><th style="padding:4px 6px;text-align:right">倍率</th>
       <th style="padding:4px 6px;text-align:right">剩余 %</th>
       <th style="padding:4px 6px">推荐方案</th></tr></thead>`;
@@ -543,9 +648,9 @@ async function openFieldsPanel() {
       const recShips = recShipsFor(m);
       const tplShips = effectiveShips();
       const ships = tplShips.length ? tplShips : fleetWithRec(recShips);
-      const canMine = !!(planetId && ships.length);
+      const canMine = !!(planetId && (ships.length || attachLeader));
       const mineTip = !planetId ? '实时搜索尚未设置出发星球。'
-        : !ships.length ? '没有推荐方案，舰队编辑器中也未设置舰船。'
+        : (!ships.length && !attachLeader) ? '没有推荐方案，舰队编辑器中也未设置舰船。'
         : '派出推荐舰队开采该小行星场。';
 
       const mineTd = document.createElement('td');
@@ -560,20 +665,28 @@ async function openFieldsPanel() {
       mineBtn.onclick = async () => {
         if (!canMine) return;
         const short = ships.some(s => (avail[s.shipDefId] || 0) < s.quantity);
+        const escortRetreatThreshold = templateRetreatThreshold(tpl);
         const r = await lsConfirm(
           `派出舰队？\n目标：${m.name}（${m.system}）\n出发地：${planetName}` +
+          (escortRetreatThreshold != null ? `\n护航撤回阈值：${retreatThresholdLabel(escortRetreatThreshold)}` : '') +
           (short ? '\n\n⚠ 该星球上的部分舰船数量不足，将派出当前可用舰船。' : ''),
-          ships, shipDefs);
+          attachLeader ? [{ isCommandVessel: true, label: '指挥舰', quantity: 1 }, ...ships] : ships, shipDefs);
         if (!r) return;
         const sendShips = ships;
         // Reflect the sent fleet in the shared editor (escorts kept, miners swapped).
         shipsState.clear();
         for (const s of sendShips) shipsState.set(s.shipDefId, s.quantity);
+        saveFleetMemory();
         buildEditor();
         mineBtn.disabled = true; mineBtn.textContent = '…';
+        rememberMineAttachLeader(m.id, attachLeader, escortRetreatThreshold);
         const res = await ext.runtime.sendMessage({
           type: 'SEND_MINE', sourcePlanetId: planetId, targetFieldId: m.id, ships: sendShips, miningDuration: 600,
+          attachLeader,
+          escortRetreatThreshold,
+          hangarAssignments: {},
         });
+        if (res && res.leaderRetryNotice) window.alert(res.leaderRetryNotice);
         if (res && res.error) { mineBtn.textContent = '⛏'; mineBtn.disabled = false; window.alert(`派出失败：${res.error}`); }
         else {
           mineBtn.textContent = '✓'; mineBtn.style.cssText = 'background:#1f6feb;border:1px solid #1f6feb;color:#fff;border-radius:6px;padding:2px 8px;font-size:0.95rem';
@@ -587,18 +700,40 @@ async function openFieldsPanel() {
       const fuelTd = document.createElement('td');
       fuelTd.style.cssText = 'padding:4px 6px';
       fuelTd.textContent = `${ships.length ? '…' : '—'} (${m.system})`;
-      if (ships.length && m.systemId != null) {
-        ext.runtime.sendMessage({ type: 'GET_FUEL_ESTIMATE', body: { sourcePlanetId: planetId, targetSystemId: m.systemId, ships } })
-          .then(est => { fuelTd.textContent = `${est && est.fuelCost != null ? est.fuelCost : '?'} (${m.system})`; })
-          .catch(() => { fuelTd.textContent = `? (${m.system})`; });
+      const timeTd = document.createElement('td');
+      timeTd.style.cssText = 'padding:4px 6px;white-space:nowrap';
+      timeTd.textContent = ships.length || attachLeader ? '…' : '—';
+      if ((ships.length || attachLeader) && m.systemId != null) {
+        ext.runtime.sendMessage({
+          type: 'GET_FUEL_ESTIMATE',
+          body: { sourcePlanetId: planetId, targetSystemId: m.systemId, ships, attachLeader, hangarAssignments: {} },
+        })
+          .then(est => {
+            if (est && !est.error && est.fuelCost != null) {
+              fuelTd.textContent = `${est.fuelCost} (${m.system})`;
+              timeTd.textContent = est.travelTime != null ? nxFmtDuration(nxDisplayTravelTime(est.travelTime)) : '—';
+              timeTd.title = est.travelTime != null ? '单程航行时间' : '';
+            } else {
+              fuelTd.textContent = `? (${m.system})`;
+              fuelTd.title = est && est.error ? est.error : '';
+              timeTd.textContent = '?';
+              timeTd.title = est && est.error ? est.error : '';
+            }
+          })
+          .catch(err => {
+            fuelTd.textContent = `? (${m.system})`;
+            fuelTd.title = err && err.message ? err.message : '';
+            timeTd.textContent = '?';
+            timeTd.title = err && err.message ? err.message : '';
+          });
       }
 
       const cell = (txt, extra = '') => { const td = document.createElement('td'); td.style.cssText = `padding:4px 6px;${extra}`; td.textContent = txt; return td; };
-      tr.append(selTd, mineTd, fuelTd,
+      tr.append(selTd, mineTd, fuelTd, timeTd,
         cell(TYPE_LABELS[m.type] || m.type, `color:${TYPE_COLOR[m.type] || '#e6e8ee'}`),
         cell(m.mult != null ? `×${m.mult}` : '—', 'text-align:right'),
         cell(m.leftPct != null ? `${m.leftPct}%` : '—', 'text-align:right'),
-        cell(rec ? `${rec.count}× ${SHIP_LABELS[rec.name] || rec.name}` : '—'));
+        cell(rec ? `${rec.count}× ${SHIP_LABELS[rec.name] || nxShipName(rec.name)}` : '—'));
       tb.appendChild(tr);
     }
     table.appendChild(tb);
@@ -606,7 +741,10 @@ async function openFieldsPanel() {
   }
 
   picker.addEventListener('change', () => {
+    saveFleetMemory();
     tpl = templates.find(t => String(t.id) === picker.value) || null;
+    attachLeader = templateLeader(tpl);
+    leaderChk.checked = attachLeader;
     globalThis.nexusStorage.set({ template_selections: { ...(template_selections || {}), 'af-template-select': picker.value } });
     seedFromTemplate(tpl);
     buildEditor();
@@ -684,6 +822,7 @@ async function openFieldsPanel() {
     const merged = fleetWithRec(recShips);   // computed first: reads escorts off shipsState before it's cleared
     shipsState.clear();
     for (const s of merged) shipsState.set(s.shipDefId, s.quantity);
+    saveFleetMemory();
     buildEditor();
     renderRows();
   };

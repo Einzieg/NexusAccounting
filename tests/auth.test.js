@@ -46,3 +46,135 @@ test('apiFetch explains that a logged-in game tab is required', async () => {
     /请先登录并保持第 0 赛季（NX-S0）游戏标签页打开/,
   );
 });
+
+test('game API bridge performs a same-origin request with the current session', async () => {
+  makeBrowserStub();
+  let listener;
+  globalThis.browser.runtime.onMessage = {
+    addListener: value => { listener = value; },
+    removeListener() {},
+  };
+  delete globalThis.__nexusGameApiBridgeListener;
+
+  const originalFetch = globalThis.fetch;
+  let fetchArgs;
+  globalThis.fetch = async (path, options) => {
+    fetchArgs = { path, options };
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: name => name === 'RateLimit-Remaining' ? '398' : null },
+      text: async () => JSON.stringify({ planets: [{ id: 3 }] }),
+    };
+  };
+
+  try {
+    await import('../nexus-addon/game-api-bridge.js?auth-test');
+    assert.equal(typeof listener, 'function');
+    const responsePromise = new Promise(resolve => {
+      const keepAlive = listener(
+        { type: 'GAME_FETCH', method: 'GET', path: '/api/planets' },
+        {},
+        resolve,
+      );
+      assert.equal(keepAlive, true);
+    });
+    const response = await responsePromise;
+
+    assert.equal(fetchArgs.path, '/api/planets');
+    assert.equal(fetchArgs.options.credentials, 'include');
+    assert.equal(fetchArgs.options.body, undefined);
+    assert.deepEqual(response.data, { planets: [{ id: 3 }] });
+    assert.equal(response.rateLimitRemaining, '398');
+  } finally {
+    globalThis.fetch = originalFetch;
+    delete globalThis.__nexusGameApiBridgeListener;
+  }
+});
+
+test('apiFetch injects the game bridge and retries when an unpacked extension was reloaded', async () => {
+  makeBrowserStub();
+  const sent = [];
+  let injected;
+  globalThis.browser.tabs.query = async () => [{ id: 17 }];
+  globalThis.browser.tabs.sendMessage = async (tabId, message) => {
+    assert.equal(tabId, 17);
+    sent.push(message);
+    if (sent.length === 1) {
+      throw new Error('Could not establish connection. Receiving end does not exist.');
+    }
+    return { ok: true, status: 200, data: { planets: [{ id: 2 }] } };
+  };
+  globalThis.browser.scripting = {
+    executeScript: async details => { injected = details; },
+  };
+
+  const { apiFetch } = await loadBackground();
+  await globalThis.nexusStorage.setActiveServer('nf');
+  const result = await apiFetch('/api/planets');
+
+  assert.equal(sent.length, 2);
+  assert.deepEqual(sent[0], sent[1]);
+  assert.deepEqual(injected, {
+    target: { tabId: 17 },
+    files: ['game-api-bridge.js'],
+  });
+  assert.deepEqual(result, { planets: [{ id: 2 }] });
+});
+
+test('fleet mission retries without a busy command vessel through the game tab', async () => {
+  makeBrowserStub();
+  const sent = [];
+  globalThis.browser.tabs.query = async () => [{ id: 17 }];
+  globalThis.browser.tabs.sendMessage = async (tabId, message) => {
+    assert.equal(tabId, 17);
+    sent.push(message);
+    if (sent.length === 1) {
+      return {
+        error: 'Leadership command vessel is not ready at the selected source',
+        status: 409,
+      };
+    }
+    return { ok: true, status: 200, data: { mission: { id: 9 } } };
+  };
+
+  const { postFleetMission } = await loadBackground();
+  const result = await postFleetMission('/api/fleet/mine', {
+    sourcePlanetId: 1,
+    targetFieldId: 2,
+    ships: [{ shipDefId: 3, quantity: 1 }],
+    attachLeader: true,
+  });
+
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].body.attachLeader, true);
+  assert.equal(sent[1].body.attachLeader, false);
+  assert.equal('token' in sent[0], false);
+  assert.match(result.leaderRetryNotice, /已经改为未编入再次出发/);
+  assert.equal(result.error, undefined);
+});
+
+test('fleet mission does not show a success notice when the retry fails', async () => {
+  makeBrowserStub();
+  let attempt = 0;
+  globalThis.browser.tabs.query = async () => [{ id: 17 }];
+  globalThis.browser.tabs.sendMessage = async () => {
+    attempt++;
+    return attempt === 1
+      ? { error: 'Command vessel is busy on another mission', status: 409 }
+      : { error: 'No fleet slot available', status: 409 };
+  };
+
+  const { postFleetMission } = await loadBackground();
+  const result = await postFleetMission('/api/fleet/survey', {
+    sourcePlanetId: 1,
+    targetSystemId: 2,
+    ships: [{ shipDefId: 3, quantity: 1 }],
+    attachLeader: true,
+  });
+
+  assert.equal(attempt, 2);
+  assert.equal(result.error, 'No fleet slot available');
+  assert.equal(result.leaderRetryAttempted, true);
+  assert.equal(result.leaderRetryNotice, undefined);
+});

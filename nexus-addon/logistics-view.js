@@ -34,6 +34,37 @@ const RESOURCES = [
 const KIND_LABELS = { Planet: '星球', Moon: '月球', Outpost: '前哨站' };
 const RES_BY_K = Object.fromEntries(RESOURCES.map(r => [r.k, r]));
 const BASE4 = new Set(['ore', 'silicates', 'hydrogen', 'alloys']);
+const SHIP_NAME_LABELS = {
+  probe: '探测器', spy_probe: '间谍探测器', scout: '侦察舰', fighter: '战斗机',
+  interceptor: '截击机', cruiser: '巡洋舰', torpedo_frigate: '鱼雷护卫舰',
+  carrier: '航母', battleship: '战列舰', missile_cruiser: '导弹巡洋舰',
+  bomber: '轰炸机', dreadnought: '无畏舰', titan: '泰坦',
+  assault_shuttle: '突击穿梭机', hacker_ship: '黑客船', colony_ship: '殖民船',
+  engineer_ship: '工程船', electronic_warfare_ship: '电子战舰', ew_ship: '电子战舰',
+  mine_layer: '布雷舰', stealth_ship: '隐形舰', freighter: '货运船',
+  transport_shuttle: '运输穿梭机', tanker: '油船', bulk_carrier: '大型货运船',
+  ore_freighter: '矿石货运船', mining_vessel: '采矿船', miner: '采矿船',
+  gas_collector: '气体收集船', ice_drill: '冰钻船', excavator: '挖掘机',
+  repair_ship: '维修船', lunar_shuttle: '月球穿梭机', command_vessel: '指挥舰',
+};
+const SHIP_PREFIX_LABELS = { wormhole: '虫洞', pirate: '海盗', alien: '异星', rogue: '失控', elite: '精英', ancient: '远古' };
+function normShipKey(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+function shipLabel(ship, fallback) {
+  const isObj = ship && typeof ship === 'object';
+  const key = isObj ? ship.key : null;
+  const raw = isObj ? (ship.name || ship.shipName) : ship;
+  const byKey = SHIP_NAME_LABELS[normShipKey(key)];
+  if (byKey) return byKey;
+  const norm = normShipKey(raw);
+  if (SHIP_NAME_LABELS[norm]) return SHIP_NAME_LABELS[norm];
+  const parts = norm.split('_').filter(Boolean), prefixes = [];
+  while (parts.length && SHIP_PREFIX_LABELS[parts[0]]) prefixes.push(SHIP_PREFIX_LABELS[parts.shift()]);
+  const base = SHIP_NAME_LABELS[parts.join('_')];
+  return base ? `${prefixes.join('')}${base}` : (raw || fallback || '');
+}
 // Storage cap for one resource on a colony. Planets carry a per-resource cap
 // for the base four (`oreStorage`, …); moons share one `storage` cap across
 // the base four instead; outposts share one `basicStorage` across the base
@@ -59,6 +90,21 @@ let allColonies = [];  // current colonies (for the collect source-planet picker
 // unexplained (fuel reserved out of the hold for the trip? a fleet-level cap
 // distinct from ship sum?). Needs more data before touching this formula again.
 let _cargoCtx = null;
+function cargoBonusValue(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return Math.abs(n) > 1 ? n / 100 : n;
+}
+function accountCargoBonus(me = {}) {
+  const user = me && (me.user || me) || {};
+  const active = user.activeLeaderBonuses || me?.activeLeaderBonuses || {};
+  return cargoBonusValue(active.cargoBonus);
+}
+function effectiveCargoCapacity(baseCapacity, bonus = 0) {
+  const base = Number(baseCapacity) || 0;
+  const mult = 1 + (Number(bonus) || 0);
+  return Math.floor((base * mult) + Number.EPSILON * Math.max(1, base) * 100);
+}
 async function cargoContext() {
   if (_cargoCtx) return _cargoCtx;
   const [research, me] = await Promise.all([
@@ -73,12 +119,12 @@ async function cargoContext() {
       else if (e.type === 'shuttle_cargo_bonus') shuttle += (e.value || 0) * lvl;
     }
   }
-  _cargoCtx = { general, shuttle, commander: (me.user && me.user.activeLeaderBonuses && me.user.activeLeaderBonuses.cargoBonus) || 0 };
+  _cargoCtx = { general, shuttle, commander: accountCargoBonus(me) };
   return _cargoCtx;
 }
 function effCap(def, ctx) {
   const b = ctx.general + ctx.commander + (def.key === 'transport_shuttle' ? ctx.shuttle : 0);
-  return Math.floor((def.cargoCapacity || 0) * (1 + b));
+  return effectiveCargoCapacity(def.cargoCapacity || 0, b);
 }
 const canCarry = (h, k) => !h.allowed || h.allowed.includes(k);
 // Restricted haulers (ore_freighter, tanker) first (largest cap), then general —
@@ -116,6 +162,15 @@ function fmtDur(sec) {
   if (!sec || sec < 0) return '—';
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
   return h ? `${h}时 ${m}分` : m ? `${m}分 ${s}秒` : `${s}秒`;
+}
+
+function travelTimeFactor() {
+  return /(^|\.)nf\.nexuslegacy\.space$/i.test(String(location.hostname || '')) ? 0.5 : 1;
+}
+
+function displayTravelTime(sec) {
+  const n = Number(sec);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n * travelTimeFactor())) : n;
 }
 
 const fmt = n => Math.round(n || 0).toLocaleString();
@@ -306,7 +361,7 @@ function render(page, colonies, missions = []) {
   for (const c of colonies) {
     for (const f of (c.ships || [])) {
       const def = f.definition || {};
-      const cur = totals.get(f.shipDefId) || { name: def.name || `#${f.shipDefId}`, sortOrder: def.sortOrder || 0, qty: 0 };
+      const cur = totals.get(f.shipDefId) || { name: shipLabel(def, `#${f.shipDefId}`), sortOrder: def.sortOrder || 0, qty: 0 };
       cur.qty += f.quantity || 0;
       totals.set(f.shipDefId, cur);
     }
@@ -318,7 +373,7 @@ function render(page, colonies, missions = []) {
   const flight = new Map();
   for (const m of missions) {
     for (const f of (m.fleetComposition || [])) {
-      const cur = flight.get(f.shipDefId) || { name: f.shipName || `#${f.shipDefId}`, qty: 0 };
+      const cur = flight.get(f.shipDefId) || { name: shipLabel(f.shipName, `#${f.shipDefId}`), qty: 0 };
       cur.qty += f.quantity || 0;
       flight.set(f.shipDefId, cur);
     }
@@ -440,7 +495,7 @@ function colonyCard(c) {
     if (!ships.length) shipWrap.innerHTML = '<span style="color:#484f58;">无</span>';
     for (const f of ships) {
       const sp = document.createElement('span');
-      const nm = (f.definition || {}).name || '#' + f.shipDefId;
+      const nm = shipLabel(f.definition || {}, '#' + f.shipDefId);
       sp.style.cssText = 'display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:6px; border:1px solid transparent;';
       sp.innerHTML = `<b style="color:#e6edf3;">${fmt(f.quantity)}</b>&times; <span style="color:#9aa4b2;">${esc(nm)}</span>`;
       // Draggable → relocate these ships to another colony.
@@ -498,7 +553,7 @@ async function cargoShipsOf(colony, wantKeys) {
   const ctx = await cargoContext();
   return ((colony && colony.ships) || []).map(f => {
     const def = f.definition || {};
-    return { shipDefId: f.shipDefId, key: def.key, name: def.name || ('#' + f.shipDefId), cap: effCap(def, ctx), avail: (f.quantity || 0) - (f.damagedQuantity || 0), allowed: def.allowedCargo || null };
+    return { shipDefId: f.shipDefId, key: def.key, name: shipLabel(def, '#' + f.shipDefId), cap: effCap(def, ctx), avail: (f.quantity || 0) - (f.damagedQuantity || 0), allowed: def.allowedCargo || null };
   }).filter(s => CARGO_KEYS.has(s.key) && s.cap > 0 && s.avail > 0 &&
     (!wantKeys || !wantKeys.length || !s.allowed || wantKeys.some(k => s.allowed.includes(k))));
 }
@@ -758,7 +813,7 @@ async function renderBuilder() {
     if (!ships.length) { fuelLine.textContent = ''; return; }
     fuelLine.textContent = '燃料：…';
     const est = await fuelEstimate(fuelSrc, fuelSys, ships).catch(() => null);
-    fuelLine.textContent = est ? `燃料：${fmt(est.fuelCost)} 氢 · 预计用时 ${fmtDur(est.travelTime)}${est.inRange === false ? ' · 超出航程' : ''}` : '燃料：—';
+    fuelLine.textContent = est ? `燃料：${fmt(est.fuelCost)} 氢 · 预计用时 ${fmtDur(displayTravelTime(est.travelTime))}${est.inRange === false ? ' · 超出航程' : ''}` : '燃料：—';
     // Server-authoritative capacity check: fuel-estimate returns the fleet's
     // real totalCargoCapacity (bonuses applied game-side), unlike our own
     // effCap() which reverse-engineers the bonus from research effects and can

@@ -33,6 +33,81 @@ const RES_LABELS = { ore: '矿石', silicates: '硅酸盐', hydrogen: '氢', all
   cryo_ice: '低温冰', quantum_dust: '量子尘', plasma_core: '等离子核心',
   bio_extract: '生物提取物', dark_matter: '暗物质', antimatter: '反物质' };
 const labelOf = cargo => RES_LABELS[cargo] || cargo.replace(/_/g, ' ');
+const TECH_NAME_LABELS = {
+  improved_mining: '改良采矿', silicate_refining: '硅酸盐精炼',
+  hydrogen_synthesis: '氢气合成', energy_systems: '能源系统',
+  structural_alloys: '结构合金', advanced_solar_collectors: '高级太阳能收集器',
+  advanced_solar: '高级太阳能收集器', thermal_extraction: '热能提取',
+  expanded_warehousing: '扩展仓储', construction_optimization: '施工优化',
+  dense_housing_modules: '密集住宅模块', dense_housing: '密集住宅模块',
+  bio_agriculture: '生物农业', workforce_management: '劳动力管理',
+  basic_armor_plating: '基础装甲板', basic_armor: '基础装甲板',
+  point_defense_systems: '点防御系统', point_defense: '点防御系统',
+  basic_sensors: '基础传感器', probe_technology: '探测器技术',
+  signal_intelligence: '信号情报', basic_computing: '基础计算',
+  advanced_metallurgy: '高级冶金', basic_mining_operations: '基础采矿作业',
+  assembly_lines: '装配线', basic_trade: '基础贸易', market_access: '市场准入',
+  cargo_expansion: '货舱扩展', trade_contracts: '贸易合约',
+  laser_weapons: '激光武器', kinetic_weapons: '动能武器',
+  shield_theory: '护盾理论', fighter_doctrine: '战斗机学说',
+  transport_logistics: '运输物流', ai_officer_protocol: 'AI 军官协议',
+  fleet_coordination: '舰队协调', orbital_mechanics: '轨道力学',
+  orbital_construction: '轨道建设', impulse_drive: '脉冲引擎',
+  navigation_computer: '导航计算机', network_protocols: '网络协议',
+  anomaly_scanning: '异常扫描', salvage_operations: '残骸回收作业',
+  deep_core_mining: '深核采矿', mining_fleet_operations: '采矿舰队作业',
+  mining_fleet_ops: '采矿舰队作业', hydrogen_cracking: '氢裂解',
+  mass_production: '大规模生产', advanced_refining: '高级精炼',
+  outpost_engineering: '前哨工程', interplanetary_supply_chains: '行星际补给链',
+  supply_chains: '行星际补给链', colonial_governance: '殖民治理',
+  cultural_development: '文化发展', genetic_adaptation: '基因适应',
+  plasma_weapons: '等离子武器', missile_systems: '导弹系统',
+  electronic_warfare: '电子战', mine_warfare: '布雷战',
+  advanced_shielding: '高级护盾', composite_armor: '复合装甲',
+  fortress_protocols: '要塞协议', shield_harmonics: '护盾谐波',
+  colonization_technology: '殖民技术', colonization_tech: '殖民技术',
+  cruiser_design: '巡洋舰设计', carrier_operations: '航母作战',
+  stealth_technology: '隐形技术', assault_tactics: '突击战术',
+  fleet_tactics: '舰队战术', alliance_communications: '联盟通信',
+  ftl_theory: '超光速理论', warp_drive: '曲速引擎',
+  fuel_efficiency: '燃料效率', deep_space_scanning: '深空扫描',
+  counter_intelligence: '反情报', quantum_computing: '量子计算',
+  encryption_systems: '加密系统', rift_navigation: '裂隙导航',
+  wormhole_theory: '虫洞理论', artifact_analysis: '遗物分析',
+  lunar_operations: '月球作业', rare_resource_extraction: '稀有资源开采',
+  rare_resource_processing: '稀有资源处理', zero_point_energy: '零点能',
+  nanofabrication: '纳米制造', advanced_outpost_systems: '高级前哨系统',
+  advanced_outposts: '高级前哨系统', trade_mastery: '贸易精通',
+  logistics_mastery: '物流精通', advanced_governance: '高级治理',
+  terraforming: '地貌改造', ion_cannons: '离子炮',
+  torpedo_systems: '鱼雷系统', siege_weapons: '攻城武器',
+  weapons_overcharge: '武器过载', adaptive_shields: '自适应护盾',
+  heavy_armor: '重型装甲', planetary_fortress: '行星要塞',
+  battleship_design: '战列舰设计', dreadnought_design: '无畏舰设计',
+  fleet_auxiliary_systems: '舰队辅助系统', bomber_wing_doctrine: '轰炸机联队学说',
+  bomber_wing: '轰炸机联队学说', advanced_ai_officer: '高级 AI 军官',
+  grand_strategy: '大战略', combined_operations: '联合作战',
+  alliance_logistics: '联盟物流', jump_drive: '跳跃引擎',
+  advanced_navigation: '高级导航', galactic_cartography: '银河制图',
+  quantum_sensors: '量子传感器', neural_networks: '神经网络',
+  cyberwarfare: '网络战', deep_wormhole_navigation: '深层虫洞导航',
+  deep_wormholes: '深层虫洞导航', rogue_genesis_research: '失控创世研究',
+  xenoarchaeology: '异星考古学', lunar_expansion: '月球扩张',
+  megastructure_engineering: '巨构工程', galactic_exchange: '银河交易所',
+  antimatter_warheads: '反物质弹头', dark_matter_weapons: '暗物质武器',
+  planet_cracker: '行星裂解器', phase_shields: '相位护盾',
+  nanobot_repair_systems: '纳米机器人维修系统', titan_design: '泰坦设计',
+  ship_mastery: '舰船精通', supreme_command: '最高指挥',
+  alliance_mastery: '联盟精通', quantum_drive: '量子引擎',
+  galactic_highway_network: '银河高速网络', omniscience_array: '全知阵列',
+  artificial_consciousness: '人工意识', genesis_core_hacking: '创世核心入侵',
+  transcendent_artifacts: '超凡遗物', alcubierre_bubble_drive: '阿尔库别瑞泡泡引擎',
+  lunar_mastery: '月球精通',
+};
+const normTechKey = value => String(value ?? '').trim().toLowerCase()
+  .replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+const techLabel = tech => TECH_NAME_LABELS[normTechKey(tech?.key)] ||
+  TECH_NAME_LABELS[normTechKey(tech?.name)] || tech?.name || '';
 
 // Cumulative cost to research from `fromLevel` (exclusive) to `toLevel`
 // (inclusive). Returns { cargoKey: amount } in dispatch (snake) keys.
@@ -166,7 +241,7 @@ async function openPlanner(techKey) {
   addBtn.style.cssText = 'padding:7px 14px; border-radius:6px; border:1px solid #30363d; background:#21262d; color:#e6edf3; cursor:pointer; margin-right:auto;';
   addBtn.onclick = () => {
     if (!tech || !window.__nxQueue) return;
-    window.__nxQueue.add({ kind: 'tech', key: tech.key, name: tech.name,
+    window.__nxQueue.add({ kind: 'tech', key: tech.key, name: techLabel(tech),
       planet: pSel.selectedOptions[0] && pSel.selectedOptions[0].textContent, planetId: destId,
       from: tech.level || 0, target: parseInt(lvlInp.value, 10) || (tech.level || 0) });
   };
@@ -206,7 +281,7 @@ async function openPlanner(techKey) {
   destId = planets.some(p => p.id === currentPlanetId) ? currentPlanetId : planets[0].id;
   pSel.value = String(destId);
 
-  info.textContent = `${tech.name} · 当前等级 ${tech.level || 0} · 最高 ${tech.maxLevel}`;
+  info.textContent = `${techLabel(tech)} · 当前等级 ${tech.level || 0} · 最高 ${tech.maxLevel}`;
   lvlInp.value = String(Math.min(tech.maxLevel, (tech.level || 0) + 1));
   lvlHint.textContent = `（从 ${tech.level || 0} 级开始）`;
 
