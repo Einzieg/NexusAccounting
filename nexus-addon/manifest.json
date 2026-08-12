@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Nexus Accounting 助手",
-  "version": "1.8.4",
+  "version": "1.8.5",
   "description": "适用于 Nexus Legacy NX-S0 与 NX-NF 的数据统计、舰队规划和游戏内辅助工具。",
   "author": "Verrok",
   "homepage_url": "https://github.com/Verroq/NexusAccounting",

@@ -4,7 +4,9 @@ import {
   applyServerTravelTime,
   cargoExpansionBonus,
   effectiveCargoCapacity,
+  marketTradeNet,
   normalizeRetreatThreshold,
+  resourceWeight,
   serverTravelTimeFactor,
   shipDisplayName,
   techDisplayDescription,
@@ -32,6 +34,46 @@ test('fleet template helpers normalize retreat thresholds and command vessels', 
   assert.deepEqual(templateRegularShips(template, defs), [
     { shipDefId: 2, quantity: 4 },
   ]);
+});
+
+test('market profit valuation uses the shared ore-equivalent weights', () => {
+  assert.equal(resourceWeight('ore'), 1);
+  assert.equal(resourceWeight('silicates'), 2);
+  assert.equal(resourceWeight('hydrogen'), 3);
+  assert.equal(resourceWeight('alloys'), 5);
+  assert.equal(resourceWeight('cryo_ice'), 10);
+});
+
+test('market trades deduct the correct side commission before valuing profit', () => {
+  const trade = {
+    sellerId: 7,
+    buyerId: 9,
+    amountSold: 5400,
+    resourceSold: 'hydrogen',
+    amountPaid: 600,
+    resourcePaid: 'cryo_ice',
+    commissionSeller: 30,
+    commissionBuyer: 270,
+  };
+
+  assert.deepEqual(marketTradeNet(trade, 9), {
+    soldByMe: false,
+    fee: 270,
+    paidResource: 'cryo_ice',
+    receivedResource: 'hydrogen',
+    paid: 600,
+    received: 5130,
+    oreEquivalent: 9390,
+  });
+  assert.deepEqual(marketTradeNet(trade, 7), {
+    soldByMe: true,
+    fee: 30,
+    paidResource: 'hydrogen',
+    receivedResource: 'cryo_ice',
+    paid: 5400,
+    received: 570,
+    oreEquivalent: -10500,
+  });
 });
 
 test('travel time and cargo helpers apply NX-NF and storage bonuses', () => {

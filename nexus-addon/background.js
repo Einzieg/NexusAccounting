@@ -300,6 +300,7 @@ function handleMessage(msg) {
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
   if (msg.type === 'GET_MARKET_ORDERS') return getOrders('/api/market/orders');
+  if (msg.type === 'GET_MARKET_TRADES') return getMarketTrades();
   if (msg.type === 'GET_ALLIANCE_ORDERS') return getOrders('/api/alliance-trade/orders');
   if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
   if (msg.type === 'SET_LIVE_SEARCH') return setLiveSearch(msg.config);
@@ -512,6 +513,29 @@ async function getOrders(path) {
 async function apiGet(path) {
   try {
     return await apiFetch(path);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+// Full personal market history. The game history UI is paginated at 25 rows;
+// fetch every page so profit/net-flow totals cover the complete history.
+async function getMarketTrades() {
+  try {
+    const first = await apiFetch('/api/market/my-trades?page=1&limit=100');
+    const trades = [...(Array.isArray(first) ? first : first.trades || [])];
+    const pagination = Array.isArray(first) ? null : first.pagination;
+    const limit = pagination?.limit || 100;
+    const total = pagination?.total ?? trades.length;
+    const pages = Math.ceil(total / limit);
+    if (pages > 1) {
+      const rest = await Promise.all(
+        Array.from({ length: pages - 1 }, (_, i) =>
+          apiFetch(`/api/market/my-trades?page=${i + 2}&limit=${limit}`)
+            .then(data => Array.isArray(data) ? data : data.trades || [])));
+      for (const page of rest) trades.push(...page);
+    }
+    return { trades };
   } catch (err) {
     return { error: err.message };
   }
@@ -2758,6 +2782,7 @@ function routeIntercepted(url, json) {
 // worker itself drives everything through the listeners registered above.
 export {
   apiFetch,
+  getMarketTrades,
   postFleetMission,
   processSurveyReports, processPirateReports, processMiningReports,
   processPvpReports,

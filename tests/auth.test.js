@@ -122,6 +122,35 @@ test('apiFetch injects the game bridge and retries when an unpacked extension wa
   assert.deepEqual(result, { planets: [{ id: 2 }] });
 });
 
+test('market history loads every API page for complete profit totals', async () => {
+  makeBrowserStub();
+  const paths = [];
+  globalThis.browser.tabs.query = async () => [{ id: 17 }];
+  globalThis.browser.tabs.sendMessage = async (tabId, message) => {
+    assert.equal(tabId, 17);
+    paths.push(message.path);
+    const pageMatch = message.path.match(/[?&]page=(\d+)/);
+    const page = Number(pageMatch?.[1]);
+    return {
+      ok: true,
+      status: 200,
+      data: page === 1
+        ? { trades: [{ id: 1 }], pagination: { total: 201, limit: 100 } }
+        : { trades: [{ id: page }] },
+    };
+  };
+
+  const { getMarketTrades } = await loadBackground();
+  const result = await getMarketTrades();
+
+  assert.deepEqual(paths, [
+    '/api/market/my-trades?page=1&limit=100',
+    '/api/market/my-trades?page=2&limit=100',
+    '/api/market/my-trades?page=3&limit=100',
+  ]);
+  assert.deepEqual(result.trades, [{ id: 1 }, { id: 2 }, { id: 3 }]);
+});
+
 test('fleet mission retries without a busy command vessel through the game tab', async () => {
   makeBrowserStub();
   const sent = [];

@@ -8,7 +8,7 @@
 <body>
   <div class="dashboard-topline">
     <h1>Nexus Accounting 助手</h1>
-    <button id="build-version" class="build-version" type="button" title="查看当前修改内容">1.8.4+20260811-041143</button>
+    <button id="build-version" class="build-version" type="button" title="查看当前修改内容">1.8.5+20260812-160606</button>
   </div>
 
   <nav class="tabs">
@@ -1003,6 +1003,57 @@
       <button id="m-refresh" style="margin-left:12px;">刷新</button>
       <span id="m-progress" style="margin-left:12px; color:#8b949e; font-size:0.8rem;"></span>
     </div>
+
+    <section class="market-profit-panel">
+      <div class="reports-header">
+        <div>
+          <h2>成交历史与盈利</h2>
+          <p class="market-profit-note">统计会从成交收到数量中扣除对应手续费，再统一折算为矿石等值。</p>
+        </div>
+        <div class="market-profit-actions">
+          <label for="m-history-range">统计范围</label>
+          <select id="m-history-range">
+            <option value="all">全部历史</option>
+            <option value="30">最近 30 天</option>
+            <option value="7">最近 7 天</option>
+            <option value="1">今天</option>
+          </select>
+          <button id="m-history-refresh">刷新历史</button>
+          <span id="m-history-progress"></span>
+        </div>
+      </div>
+      <div id="m-profit-stats" class="stats"></div>
+      <div class="market-profit-note market-profit-formula">
+        单笔盈亏 =（收到数量 − 手续费）× 收到资源权重 − 支付数量 × 支付资源权重。<br>
+        矿石等值权重：矿石 ×1、硅酸盐 ×2、氢 ×3、合金 ×5、其他稀有资源 ×10。
+        这是资源价值估算，不代表已兑现为单一货币的会计利润。
+      </div>
+      <div class="market-flow-section">
+        <h3>各资源净流量</h3>
+        <div id="m-resource-flows" class="market-flow-grid"></div>
+      </div>
+      <div class="market-history-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>方向</th>
+              <th>付出</th>
+              <th>收到（实际到账）</th>
+              <th>手续费</th>
+              <th>枢纽</th>
+              <th>矿石等值盈亏</th>
+            </tr>
+          </thead>
+          <tbody id="m-history-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination market-history-pagination">
+        <button id="m-history-prev">← 上一页</button>
+        <span id="m-history-page">第 1 / 1 页</span>
+        <button id="m-history-next">下一页 →</button>
+      </div>
+    </section>
 
     <div class="reports-section">
       <div class="reports-header">
