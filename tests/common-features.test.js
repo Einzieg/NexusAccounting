@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
 import {
   applyServerTravelTime,
   cargoExpansionBonus,
@@ -74,6 +75,25 @@ test('market trades deduct the correct side commission before valuing profit', (
     received: 570,
     oreEquivalent: -10500,
   });
+});
+
+test('market history is a standalone lazily loaded dashboard view', () => {
+  const readAddon = path => readFileSync(new URL(`../nexus-addon/${path}`, import.meta.url), 'utf8');
+  const html = readAddon('dashboard.html');
+  const dashboard = readAddon('dashboard.js');
+  const market = readAddon('tabs/market.js');
+  const history = readAddon('tabs/market-history.js');
+  const build = readAddon('build.py');
+
+  assert.match(html, /data-tab="market-history">交易分析</);
+  assert.match(html, /id="market-history-content"/);
+  assert.match(dashboard, /activeTab === 'market-history'/);
+  assert.doesNotMatch(market, /GET_MARKET_TRADES/);
+  assert.match(history, /GET_MARKET_TRADES/);
+  assert.match(history, /HISTORY_AUTO_REFRESH_MS = 30000/);
+  assert.match(history, /loadHistory\(true\)/);
+  assert.match(history, /Date\.now\(\) - historyLoadedAt < HISTORY_AUTO_REFRESH_MS/);
+  assert.match(build, /tabs\/market-history\.js/);
 });
 
 test('travel time and cargo helpers apply NX-NF and storage bonuses', () => {
