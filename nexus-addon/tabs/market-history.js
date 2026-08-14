@@ -6,7 +6,7 @@ import { fmt, makeStatCard, marketTradeNet, resourceWeight, uiLabel } from '../c
 let history = [];
 let historyUserId = null;
 let historyPage = 1;
-let historyHubNames = {};
+let historyPlayerNames = {};
 let historyLoading = false;
 let historyLoadedAt = 0;
 const HISTORY_PER_PAGE = 20;
@@ -49,18 +49,20 @@ async function loadHistory(force = false) {
   status.textContent = '正在加载历史…';
   refresh.disabled = true;
   try {
-    const [data, me, hubs] = await Promise.all([
+    const [data, me] = await Promise.all([
       browser.runtime.sendMessage({ type: 'GET_MARKET_TRADES' }),
       browser.runtime.sendMessage({ type: 'GET_AUTH_ME' }),
-      browser.runtime.sendMessage({ type: 'GET_HUBS' }),
     ]);
     if (data?.error) { status.textContent = `错误：${data.error}`; return; }
-    if (hubs?.error) { status.textContent = `错误：${hubs.error}`; return; }
     if (me?.error || !me?.user) { status.textContent = `错误：${me?.error || '无法识别当前玩家'}`; return; }
     historyUserId = me.user.id ?? me.user.userId;
     if (historyUserId == null) { status.textContent = '错误：玩家 ID 不可用'; return; }
     history = data.trades || [];
-    historyHubNames = Object.fromEntries((hubs.hubs || []).map(hub => [hub.id, hub.name]));
+    const counterpartIds = history.map(trade =>
+      String(trade.sellerId) === String(historyUserId) ? trade.buyerId : trade.sellerId);
+    const players = await browser.runtime.sendMessage({ type: 'GET_PLAYER_NAMES', ids: counterpartIds })
+      .catch(() => ({ names: {} }));
+    historyPlayerNames = players?.names || {};
     history.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     historyPage = 1;
     historyLoadedAt = Date.now();
@@ -148,16 +150,16 @@ function renderHistory() {
 
   for (const { trade, net } of pageRows) {
     const row = document.createElement('tr');
-    const fromHub = trade.hubName || historyHubNames[trade.hubId] || (trade.hubId != null ? `枢纽 ${trade.hubId}` : '—');
-    const toHub = trade.buyerHubName || historyHubNames[trade.buyerHubId] || '';
-    const hub = toHub && toHub !== fromHub ? `${fromHub} → ${toHub}` : fromHub;
+    const counterpartId = net.soldByMe ? trade.buyerId : trade.sellerId;
+    const counterpart = historyPlayerNames[String(counterpartId)] ||
+      (counterpartId != null ? `玩家 #${counterpartId}` : '—');
     const values = [
       new Date(trade.createdAt).toLocaleString(),
       net.soldByMe ? '卖出' : '买入',
       `${fmt(net.paid)} ${res(net.paidResource)}`,
       `${fmt(net.received)} ${res(net.receivedResource)}`,
       net.fee ? `${fmt(net.fee)} ${res(net.receivedResource)}` : '—',
-      hub,
+      counterpart,
       `${net.oreEquivalent >= 0 ? '+' : ''}${fmt(Math.round(net.oreEquivalent))}`,
     ];
     values.forEach((value, index) => {

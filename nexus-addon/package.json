@@ -1,6 +1,6 @@
 {
   "name": "nexus-accounting",
-  "version": "1.8.6",
+  "version": "1.8.7",
   "type": "module",
   "description": "适用于 Nexus Legacy NX-S0 与 NX-NF 的数据统计、舰队规划和游戏内辅助工具。",
   "author": "Verrok",

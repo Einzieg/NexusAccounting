@@ -301,6 +301,7 @@ function handleMessage(msg) {
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
   if (msg.type === 'GET_MARKET_ORDERS') return getOrders('/api/market/orders');
   if (msg.type === 'GET_MARKET_TRADES') return getMarketTrades();
+  if (msg.type === 'GET_PLAYER_NAMES') return getPlayerNames(msg.ids || []);
   if (msg.type === 'GET_ALLIANCE_ORDERS') return getOrders('/api/alliance-trade/orders');
   if (msg.type === 'START_RESEARCH') return startResearch(msg.researchId, msg.planetId, msg.useFragments);
   if (msg.type === 'SET_LIVE_SEARCH') return setLiveSearch(msg.config);
@@ -516,6 +517,33 @@ async function apiGet(path) {
   } catch (err) {
     return { error: err.message };
   }
+}
+
+const playerNameCache = new Map();
+
+// Resolve public usernames for trade counterpart IDs. Cache by universe so a
+// refresh does not repeat profile requests and same-numbered users stay apart.
+async function getPlayerNames(ids) {
+  const uniqueIds = [...new Set((ids || []).map(Number)
+    .filter(id => Number.isInteger(id) && id > 0))];
+  const server = await gameServer();
+  const prefix = server.key || server.origin;
+  const cacheKey = id => `${prefix}:${id}`;
+  const missing = uniqueIds.filter(id => !playerNameCache.has(cacheKey(id)));
+
+  for (let i = 0; i < missing.length; i += 10) {
+    await Promise.all(missing.slice(i, i + 10).map(async id => {
+      const data = await apiGet(`/api/players/${id}/profile`);
+      const username = data?.profile?.username;
+      if (username) playerNameCache.set(cacheKey(id), username);
+    }));
+  }
+
+  return {
+    names: Object.fromEntries(uniqueIds
+      .map(id => [String(id), playerNameCache.get(cacheKey(id))])
+      .filter(([, username]) => username)),
+  };
 }
 
 // Full personal market history. The game history UI is paginated at 25 rows;
@@ -2783,6 +2811,7 @@ function routeIntercepted(url, json) {
 export {
   apiFetch,
   getMarketTrades,
+  getPlayerNames,
   postFleetMission,
   processSurveyReports, processPirateReports, processMiningReports,
   processPvpReports,

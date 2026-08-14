@@ -151,6 +151,36 @@ test('market history loads every API page for complete profit totals', async () 
   assert.deepEqual(result.trades, [{ id: 1 }, { id: 2 }, { id: 3 }]);
 });
 
+test('market counterpart names resolve by player id and are cached per server', async () => {
+  makeBrowserStub();
+  const paths = [];
+  globalThis.browser.tabs.query = async () => [{ id: 17 }];
+  globalThis.browser.tabs.sendMessage = async (tabId, message) => {
+    assert.equal(tabId, 17);
+    paths.push(message.path);
+    const id = Number(message.path.match(/\/players\/(\d+)\/profile/)?.[1]);
+    return {
+      ok: true,
+      status: 200,
+      data: { profile: { userId: id, username: id === 7 ? 'Alice' : 'Bob' } },
+    };
+  };
+
+  const { getPlayerNames } = await loadBackground();
+  await globalThis.nexusStorage.setActiveServer('nf');
+  const first = await getPlayerNames([7, 9, 7, 0, 'invalid']);
+
+  assert.deepEqual(first.names, { 7: 'Alice', 9: 'Bob' });
+  assert.deepEqual(paths, [
+    '/api/players/7/profile',
+    '/api/players/9/profile',
+  ]);
+
+  const second = await getPlayerNames([9, 7]);
+  assert.deepEqual(second.names, { 7: 'Alice', 9: 'Bob' });
+  assert.equal(paths.length, 2);
+});
+
 test('fleet mission retries without a busy command vessel through the game tab', async () => {
   makeBrowserStub();
   const sent = [];

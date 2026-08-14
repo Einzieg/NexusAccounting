@@ -87,9 +87,12 @@ test('market history is a standalone lazily loaded dashboard view', () => {
 
   assert.match(html, /data-tab="market-history">交易分析</);
   assert.match(html, /id="market-history-content"/);
+  assert.match(html, /<th>交易对方<\/th>/);
   assert.match(dashboard, /activeTab === 'market-history'/);
   assert.doesNotMatch(market, /GET_MARKET_TRADES/);
   assert.match(history, /GET_MARKET_TRADES/);
+  assert.match(history, /GET_PLAYER_NAMES/);
+  assert.doesNotMatch(history, /GET_HUBS/);
   assert.match(history, /HISTORY_AUTO_REFRESH_MS = 30000/);
   assert.match(history, /loadHistory\(true\)/);
   assert.match(history, /Date\.now\(\) - historyLoadedAt < HISTORY_AUTO_REFRESH_MS/);
