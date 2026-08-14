@@ -14,15 +14,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Verroq/NexusAccounting.git"
+    "url": "git+https://github.com/Einzieg/NexusAccounting.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Verrok (maintained by Einzieg)",
+  "license": "MPL-2.0",
   "bugs": {
-    "url": "https://github.com/Verroq/NexusAccounting/issues"
+    "url": "https://github.com/Einzieg/NexusAccounting/issues"
   },
-  "homepage": "https://github.com/Verroq/NexusAccounting#readme",
+  "homepage": "https://github.com/Einzieg/NexusAccounting#readme",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.5.0",

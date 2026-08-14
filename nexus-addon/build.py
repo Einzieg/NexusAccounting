@@ -37,15 +37,28 @@ FILES = [
     'icons/icon128.png',
 ]
 
+ROOT_FILES = [
+    ('LICENSE', 'LICENSE'),
+    ('docs/privacy-policy.md', 'PRIVACY.md'),
+]
+
 
 def read_version():
     with open(os.path.join(HERE, 'manifest.json'), encoding='utf-8') as f:
         return json.load(f)['version']
 
 
+def chrome_manifest():
+    """Return a Chrome-only manifest without Firefox compatibility keys."""
+    with open(os.path.join(HERE, 'manifest.json'), encoding='utf-8') as f:
+        manifest = json.load(f)
+    manifest.pop('browser_specific_settings', None)
+    manifest.get('background', {}).pop('scripts', None)
+    return json.dumps(manifest, ensure_ascii=False, indent=2) + '\n'
+
+
 def build(version):
-    """Write the package as both .xpi (Firefox/AMO) and .zip (Chrome Web
-    Store) — identical contents, the manifest is MV3 for both."""
+    """Write Firefox/AMO .xpi and Chrome Web Store .zip packages."""
     import zipfile
     targets = []
     for ext in ('xpi', 'zip'):
@@ -56,7 +69,12 @@ def build(version):
                 print(f'removed {os.path.basename(old)}')
         with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as z:
             for name in FILES:
-                z.write(os.path.join(HERE, name), name)
+                if ext == 'zip' and name == 'manifest.json':
+                    z.writestr(name, chrome_manifest())
+                else:
+                    z.write(os.path.join(HERE, name), name)
+            for source, packaged_name in ROOT_FILES:
+                z.write(os.path.join(ROOT, source), packaged_name)
         size = os.path.getsize(target) // 1024
         print(f'built {os.path.basename(target)} ({size} KB, {len(FILES)} files)')
         targets.append(target)

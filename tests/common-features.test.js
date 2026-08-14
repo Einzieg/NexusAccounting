@@ -120,5 +120,7 @@ test('ship and research names use Chinese labels across API response shapes', ()
 
   assert.equal(techDisplayName({ researchKey: 'basic_sensors', displayName: 'Basic Sensors' }), '基础传感器');
   assert.equal(techDisplayName({ definition: { key: 'expanded_warehousing' } }), '扩展仓储');
+  assert.equal(techDisplayName({ displayName: 'Interstellar Trade Networks' }), '星际贸易网络');
+  assert.equal(techDisplayName({ name: 'Dead Zone Navigation' }), '死区导航');
   assert.match(techDisplayDescription({ slug: 'fleet_coordination' }), /舰队槽/);
 });

@@ -1,6 +1,6 @@
 # Nexus Accounting 助手
 
-面向 [Nexus Legacy](https://nexuslegacy.space/) 的浏览器游戏助手，支持两个独立服务器：
+面向 [Nexus Legacy](https://nexuslegacy.space/) 的非官方社区浏览器游戏助手，支持两个独立服务器：
 
 | 服务器 | ID | 游戏地址 |
 |---|---|---|
@@ -31,6 +31,8 @@
 助手通过所选服务器中已登录的游戏标签页发起同源 API 请求。浏览器会自动附带 HttpOnly 会话 Cookie；助手本身不会读取、保存或转发 Cookie 值，因此无需再次输入账号或密码。同步期间必须保持对应的游戏标签页打开。
 
 所有采集结果都保存在浏览器的 `storage.local` 中，不会上传到其他服务。扩展更新前会自动将本地数据备份到下载目录。
+
+完整说明请参阅[隐私政策](docs/privacy-policy.md)。
 
 ## 使用方法
 

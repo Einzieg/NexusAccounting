@@ -1,6 +1,6 @@
 # Privacy Policy — Nexus Accounting
 
-**Last updated: 2026-08-11**
+**Last updated: 2026-08-15**
 
 Nexus Accounting is a browser extension that reads your Nexus Legacy game data and displays it locally as a personal accounting dashboard. This policy describes exactly what data the extension accesses, how it is used, and where it goes.
 
@@ -19,6 +19,9 @@ The extension reads the following data from the selected Nexus Legacy game API (
 | Planets & buildings | Your planets, their buildings (to read lab levels), and stationed fleets |
 | Galaxy map | System names, security zones, arm/sector coordinates (for zone tagging and the planet finder) |
 | Fuel logs | Hydrogen cost per launched mission (type, zone, amount) |
+| Market history | Your completed trades, resource amounts, fees, counterpart player names or identifiers, and timestamps |
+| In-game identity | Your in-game player name and player names that already appear in game reports or market records |
+| Plans and preferences | Fleet templates, research queues, filters, selected server, and other extension settings you create |
 
 The extension sends API requests through a content script running in an already authenticated Nexus Legacy game tab. The browser attaches the HttpOnly session cookie automatically; the extension does not read, store, forward, write, or modify cookie values.
 
@@ -30,8 +33,10 @@ All data is used **solely to operate the extension's dashboard** on your own dev
 
 - Build aggregated statistics (resources collected, ships lost, fuel spent, etc.)
 - Render charts, history tables, and the tech-tree planner
+- Calculate market resource flows, fees, and estimated profit
 - Run the offline combat simulator
 - Drive the planet-finder galaxy scan
+- Save fleet templates and other plans that you explicitly create
 
 No data is used for advertising, profiling, or any purpose unrelated to displaying your own game statistics back to you.
 
@@ -51,9 +56,9 @@ The extension also writes automatic backup files to your `Downloads/NexusAccount
 
 ---
 
-## 5. Write operations
+## 5. User-initiated game operations
 
-The extension makes one type of write call to the game API: posting a research job when you click **Launch** in the tech-tree planner (`POST /api/research/{id}/start`). A confirmation dialog is shown before this action is taken. All other API calls are read-only.
+The extension can send write requests to the game only after you explicitly choose an action in its interface. These actions include starting a research job, dispatching a fleet mission, and transferring resources or ships between your colonies. Where the operation changes game state, the extension displays the relevant plan or confirmation before sending it. Background synchronization and reporting requests are read-only.
 
 ---
 
@@ -77,4 +82,4 @@ All communication with the game API uses HTTPS and runs same-origin inside the s
 
 ## 8. Contact
 
-If you have questions about this policy, open an issue at [github.com/Verroq/NexusAccounting](https://github.com/Verroq/NexusAccounting).
+If you have questions about this policy, open an issue at [github.com/Einzieg/NexusAccounting](https://github.com/Einzieg/NexusAccounting/issues).
