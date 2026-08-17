@@ -1,10 +1,13 @@
 # Release workflow: push a tag like v1.8.1 to build xpi/zip packages and attach
 # them to a GitHub release. Store submissions run only when credentials exist.
 #
-# Optional store-publishing secrets (Settings → Secrets and variables → Actions):
+# Optional Firefox publishing secrets (Settings → Secrets and variables → Actions):
 #   WEB_EXT_API_KEY      AMO JWT issuer (user:12345678:123)
 #   WEB_EXT_API_SECRET   AMO JWT secret
-#   CWS_EXTENSION_ID     Chrome Web Store item id (from the listing URL)
+# Chrome Web Store API v2:
+#   Variable:
+#   CWS_PUBLISHER_ID     Publisher id from the developer dashboard
+#   Secrets:
 #   CWS_CLIENT_ID        Google OAuth client id
 #   CWS_CLIENT_SECRET    Google OAuth client secret
 #   CWS_REFRESH_TOKEN    Google OAuth refresh token
@@ -20,8 +23,9 @@ jobs:
     permissions:
       contents: write   # create the GitHub release
     env:
+      CWS_EXTENSION_ID: cikikabpimpjecpcofdadcgbihokoofk
       HAS_AMO_CREDENTIALS: ${{ secrets.WEB_EXT_API_KEY != '' && secrets.WEB_EXT_API_SECRET != '' }}
-      HAS_CWS_CREDENTIALS: ${{ secrets.CWS_EXTENSION_ID != '' && secrets.CWS_CLIENT_ID != '' && secrets.CWS_CLIENT_SECRET != '' && secrets.CWS_REFRESH_TOKEN != '' }}
+      HAS_CWS_CREDENTIALS: ${{ vars.CWS_PUBLISHER_ID != '' && secrets.CWS_CLIENT_ID != '' && secrets.CWS_CLIENT_SECRET != '' && secrets.CWS_REFRESH_TOKEN != '' }}
 
     steps:
       - uses: actions/checkout@v5
@@ -67,7 +71,7 @@ jobs:
         if: env.HAS_CWS_CREDENTIALS == 'true'
         working-directory: nexus-addon
         env:
-          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
           CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}

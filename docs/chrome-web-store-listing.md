@@ -5,6 +5,8 @@ This file contains copy-ready listing and review information for the Chrome Web 
 ## Product details
 
 - **Name:** Nexus Accounting 助手
+- **Store listing:** https://chromewebstore.google.com/detail/nexus-accounting-%E5%8A%A9%E6%89%8B/cikikabpimpjecpcofdadcgbihokoofk
+- **Extension ID:** `cikikabpimpjecpcofdadcgbihokoofk`
 - **Primary language:** Chinese (Simplified)
 - **Category:** Productivity
 - **Homepage:** https://github.com/Einzieg/NexusAccounting
@@ -86,6 +88,35 @@ The game uses an HttpOnly same-origin session cookie. The browser attaches it to
 - `store-assets/small-promo-440x280.png` — required small promotional tile
 - `store-assets/marquee-1400x560.png` — optional marquee image
 - `store-assets/screenshots/*.png` — 1280×800 real product screenshots
+
+## GitHub Actions automatic publishing
+
+The release workflow uses Chrome Web Store API v2. Configure these under
+**GitHub repository → Settings → Secrets and variables → Actions**:
+
+- Repository variable `CWS_PUBLISHER_ID`: the publisher ID shown in the
+  Chrome Web Store developer dashboard.
+- Repository secret `CWS_CLIENT_ID`: Google OAuth client ID.
+- Repository secret `CWS_CLIENT_SECRET`: Google OAuth client secret.
+- Repository secret `CWS_REFRESH_TOKEN`: OAuth refresh token authorized with
+  the `https://www.googleapis.com/auth/chromewebstore` scope.
+
+The public extension ID `cikikabpimpjecpcofdadcgbihokoofk` is pinned in
+`.github/workflows/release.yml`; do not create a `CWS_EXTENSION_ID` secret.
+Never commit OAuth credentials or a refresh token to the repository.
+
+To publish an update:
+
+1. Increase the versions in `nexus-addon/manifest.json` and
+   `nexus-addon/package.json`.
+2. Commit and push the release changes.
+3. Create and push a matching tag such as `v1.8.8`.
+4. The Release workflow tests and packages the extension, creates a GitHub
+   release, uploads the Chrome ZIP, and submits it for Chrome Web Store review.
+
+After Google approves and publishes the version, Chrome automatically updates
+store-installed copies. A normal branch push does not submit a store update;
+only a matching `v*` tag starts this release workflow.
 
 ## Submission checklist
 

@@ -9,6 +9,11 @@
 
 <img width="1889" height="726" alt="Nexus Accounting 仪表盘" src="https://github.com/user-attachments/assets/62757e1c-d4c6-422d-9889-4ad0144b8801" />
 
+## 安装
+
+- [从 Chrome 应用商店安装 Nexus Accounting 助手](https://chromewebstore.google.com/detail/nexus-accounting-%E5%8A%A9%E6%89%8B/cikikabpimpjecpcofdadcgbihokoofk)
+- Chrome Web Store 扩展 ID：`cikikabpimpjecpcofdadcgbihokoofk`
+
 ## 主要功能
 
 - 每 15 分钟自动采集游戏 API，也可随时手动刷新。

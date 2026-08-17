@@ -5,8 +5,10 @@ Usage, from nexus-addon/:
     python3 build.py            build the unsigned xpi at the repo root
     python3 build.py --sign     submit the version to AMO (LISTED channel)
                                 for review and public distribution
+    python3 build.py --chrome   submit the Chrome ZIP for review
 
-Submission needs AMO credentials in the environment or in ../.env
+Submission needs the corresponding store credentials in the environment or
+in ../.env.
 
 Listed versions are reviewed by Mozilla humans and distributed/updated by
 AMO itself — there is no self-hosted update channel. Track review status at
@@ -132,7 +134,13 @@ def sign(version):
 
 def publish_chrome(version):
     load_env()
-    needed = ['CWS_EXTENSION_ID', 'CWS_CLIENT_ID', 'CWS_CLIENT_SECRET', 'CWS_REFRESH_TOKEN']
+    needed = [
+        'CWS_EXTENSION_ID',
+        'CWS_PUBLISHER_ID',
+        'CWS_CLIENT_ID',
+        'CWS_CLIENT_SECRET',
+        'CWS_REFRESH_TOKEN',
+    ]
     missing = [k for k in needed if not os.environ.get(k)]
     if missing:
         sys.exit('Missing ' + ', '.join(missing) + ' (env or ../.env).')
@@ -141,17 +149,22 @@ def publish_chrome(version):
     if not os.path.exists(zip_path):
         build(version)
 
+    cli_env = os.environ.copy()
+    cli_env.update({
+        'CLIENT_ID': os.environ['CWS_CLIENT_ID'],
+        'CLIENT_SECRET': os.environ['CWS_CLIENT_SECRET'],
+        'REFRESH_TOKEN': os.environ['CWS_REFRESH_TOKEN'],
+        'PUBLISHER_ID': os.environ['CWS_PUBLISHER_ID'],
+    })
+
     cmd = [
-        'npx', '--yes', 'chrome-webstore-upload-cli@3', 'upload',
+        'npx', '--yes', 'chrome-webstore-upload-cli@4.0.1',
         '--source', zip_path,
         '--extension-id', os.environ['CWS_EXTENSION_ID'],
-        '--client-id', os.environ['CWS_CLIENT_ID'],
-        '--client-secret', os.environ['CWS_CLIENT_SECRET'],
-        '--refresh-token', os.environ['CWS_REFRESH_TOKEN'],
-        '--auto-publish',
+        '--publisher-id', os.environ['CWS_PUBLISHER_ID'],
     ]
     print(f'uploading {version} to the Chrome Web Store…')
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, env=cli_env)
     print('Chrome Web Store: uploaded and submitted for review.')
 
 

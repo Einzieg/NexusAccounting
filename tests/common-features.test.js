@@ -99,6 +99,23 @@ test('market history is a standalone lazily loaded dashboard view', () => {
   assert.match(build, /tabs\/market-history\.js/);
 });
 
+test('Chrome Web Store publishing uses the API v2 CLI contract', () => {
+  const build = readFileSync(new URL('../nexus-addon/build.py', import.meta.url), 'utf8');
+  const release = readFileSync(
+    new URL('../.github/workflows/release.yml', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(build, /chrome-webstore-upload-cli@4\.0\.1/);
+  assert.match(build, /CWS_PUBLISHER_ID/);
+  assert.doesNotMatch(
+    build,
+    /chrome-webstore-upload-cli@3|--auto-publish|--client-id|--client-secret|--refresh-token/,
+  );
+  assert.match(release, /vars\.CWS_PUBLISHER_ID/);
+  assert.match(release, /cikikabpimpjecpcofdadcgbihokoofk/);
+});
+
 test('travel time and cargo helpers apply NX-NF and storage bonuses', () => {
   assert.equal(serverTravelTimeFactor({ id: 'NX-NF' }), 0.5);
   assert.equal(serverTravelTimeFactor({ id: 'NX-S0' }), 1);
