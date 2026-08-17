@@ -296,6 +296,7 @@ function handleMessage(msg) {
   if (msg.type === 'GET_LEADERSHIP') return apiGet('/api/leadership');
   if (msg.type === 'GET_SYSTEM_COORDS') return getSystemCoords(msg.names || [], msg.ids || []);
   if (msg.type === 'GET_ALLIANCE') return getAlliance();
+  if (msg.type === 'GET_ALLIANCE_STATION_RESOURCES') return getAllianceStationResources(!!msg.force);
   if (msg.type === 'GET_PLAYER_RANK') return getPlayerRanks(msg.name);
   if (msg.type === 'GET_RESOURCES') return getResources();
   if (msg.type === 'GET_HUBS') return apiGet('/api/market/hubs');
@@ -459,6 +460,128 @@ async function getAlliance() {
     };
   } catch (err) {
     return { error: err.message };
+  }
+}
+
+const STATION_RESOURCE_FIELDS = [
+  'ore', 'silicates', 'hydrogen', 'alloys',
+  'cryoIce', 'quantumDust', 'plasmaCore', 'bioExtract', 'darkMatter', 'antimatter',
+];
+const STATION_RESOURCE_CACHE_MS = 30000;
+const STATION_DETAIL_CONCURRENCY = 6;
+const stationResourceCache = new Map();
+
+function stationRefsFromTerritories(payload) {
+  const territories = Array.isArray(payload) ? payload : (payload?.territories || []);
+  const refs = new Map();
+  for (const territory of territories) {
+    for (const raw of (Array.isArray(territory?.stations) ? territory.stations : [])) {
+      const id = Number(raw?.id ?? raw?.stationId);
+      if (!Number.isInteger(id) || id <= 0) continue;
+      refs.set(id, {
+        ...raw,
+        id,
+        sectorId: raw.sectorId ?? territory.sectorId ?? null,
+        sectorName: raw.sectorName || territory.sectorName ||
+          (territory.sectorIndex != null ? `Sector ${territory.sectorIndex}` : ''),
+        sectorIndex: raw.sectorIndex ?? territory.sectorIndex ?? null,
+        armId: raw.armId ?? territory.armId ?? null,
+        securityZone: raw.securityZone || territory.securityZone || '',
+        territoryBonus: raw.territoryBonus ?? territory.bonus ?? 0,
+      });
+    }
+  }
+  return [...refs.values()];
+}
+
+function hasStationResourceFields(station) {
+  const resources = station?.resources || station?.resourceData;
+  return STATION_RESOURCE_FIELDS.some(field =>
+    Object.hasOwn(station || {}, field) || Object.hasOwn(resources || {}, field));
+}
+
+function normalizeStationResource(station = {}, ref = {}, error = null) {
+  const resources = station.resources || station.resourceData || station;
+  const numberValue = field => {
+    const value = resources?.[field] ?? station?.[field];
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+  const system = station.system || ref.system || {};
+  return {
+    id: Number(station.id ?? ref.id),
+    name: station.name || ref.name || `站点 #${station.id ?? ref.id}`,
+    systemId: station.systemId ?? ref.systemId ?? system.id ?? null,
+    systemName: station.systemName || ref.systemName || system.name || '',
+    sectorId: station.sectorId ?? ref.sectorId ?? null,
+    sectorName: station.sectorName || ref.sectorName || '',
+    sectorIndex: station.sectorIndex ?? ref.sectorIndex ?? null,
+    armId: station.armId ?? ref.armId ?? null,
+    securityZone: station.securityZone || ref.securityZone || '',
+    territoryBonus: Number(ref.territoryBonus) || 0,
+    basicStorage: numberValue('basicStorage'),
+    rareStorage: numberValue('rareStorage'),
+    shieldHp: numberValue('shieldHp'),
+    shieldMaxHp: numberValue('shieldMaxHp'),
+    resources: Object.fromEntries(STATION_RESOURCE_FIELDS.map(field => [field, numberValue(field)])),
+    error,
+  };
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function getAllianceStationResources(force = false) {
+  const server = await gameServer();
+  const cacheKey = server.key || server.origin;
+  const cached = stationResourceCache.get(cacheKey);
+  if (!force && cached && Date.now() - cached.savedAt < STATION_RESOURCE_CACHE_MS) {
+    return cached.value;
+  }
+
+  try {
+    const [territoryPayload, alliancePayload] = await Promise.all([
+      apiFetch('/api/alliances/territories', server),
+      apiFetch('/api/alliances/my', server).catch(() => ({})),
+    ]);
+    const territories = Array.isArray(territoryPayload)
+      ? territoryPayload
+      : (territoryPayload.territories || []);
+    const refs = stationRefsFromTerritories(territoryPayload);
+    const stations = await mapWithConcurrency(refs, STATION_DETAIL_CONCURRENCY, async ref => {
+      if (hasStationResourceFields(ref)) return normalizeStationResource(ref, ref);
+      try {
+        const detail = await apiFetch(`/api/stations/${ref.id}`, server);
+        return normalizeStationResource(detail.station || detail, ref);
+      } catch (error) {
+        return normalizeStationResource({}, ref, error.message || String(error));
+      }
+    });
+    stations.sort((a, b) =>
+      String(a.sectorName).localeCompare(String(b.sectorName), undefined, { numeric: true }) ||
+      String(a.systemName).localeCompare(String(b.systemName), undefined, { numeric: true }) ||
+      a.id - b.id);
+    const alliance = alliancePayload.alliance || {};
+    const value = {
+      alliance: { id: alliance.id ?? null, tag: alliance.tag || '', name: alliance.name || '' },
+      territoryCount: territories.length,
+      stations,
+      updatedAt: new Date().toISOString(),
+    };
+    stationResourceCache.set(cacheKey, { savedAt: Date.now(), value });
+    return value;
+  } catch (error) {
+    return { error: error.message || String(error) };
   }
 }
 
@@ -2810,6 +2933,7 @@ function routeIntercepted(url, json) {
 // worker itself drives everything through the listeners registered above.
 export {
   apiFetch,
+  getAllianceStationResources, stationRefsFromTerritories, normalizeStationResource,
   getMarketTrades,
   getPlayerNames,
   postFleetMission,

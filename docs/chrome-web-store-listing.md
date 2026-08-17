@@ -110,7 +110,7 @@ To publish an update:
 1. Increase the versions in `nexus-addon/manifest.json` and
    `nexus-addon/package.json`.
 2. Commit and push the release changes.
-3. Create and push a matching tag such as `v1.8.9`.
+3. Create and push a matching tag such as `v1.8.10`.
 4. The Release workflow tests and packages the extension, creates a GitHub
    release, uploads the Chrome ZIP, and submits it for Chrome Web Store review.
 

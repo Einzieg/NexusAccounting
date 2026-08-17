@@ -8,7 +8,7 @@
 <body>
   <div class="dashboard-topline">
     <h1>Nexus Accounting 助手</h1>
-    <button id="build-version" class="build-version" type="button" title="查看当前修改内容">1.8.9+20260817-093226</button>
+    <button id="build-version" class="build-version" type="button" title="查看当前修改内容">1.8.10+20260817-100534</button>
   </div>
 
   <nav class="tabs">
@@ -25,6 +25,7 @@
     <button class="tab" data-tab="fleets">舰队模板</button>
     <button class="tab" data-tab="scouting">侦察任务</button>
     <button class="tab" data-tab="xeno">异星遗迹</button>
+    <button class="tab" data-tab="stations">站点资源</button>
     <button class="tab" data-tab="market">市场</button>
     <button class="tab" data-tab="market-history">交易分析</button>
     <button class="tab" data-tab="techtree">科技树</button>
@@ -975,6 +976,62 @@
       </div>
       <table class="fleet-table"><tbody id="ft-ships"></tbody></table>
     </div>
+  </div>
+
+  <div id="stations-content" style="display:none;">
+    <section class="station-resource-panel">
+      <div class="reports-header">
+        <div>
+          <h2>联盟站点资源</h2>
+          <p class="station-resource-note">仅枚举当前联盟领土接口返回的站点，再读取各站点仓储；不会扫描全宇宙。</p>
+        </div>
+        <div class="station-resource-actions">
+          <input id="stations-search" type="search" placeholder="搜索站点、编号、星系或领土…">
+          <label for="stations-zone">区域</label>
+          <select id="stations-zone">
+            <option value="all">全部区域</option>
+            <option value="open">开放区</option>
+            <option value="dead">死区</option>
+            <option value="sentinel">哨兵区</option>
+            <option value="rift">裂隙区</option>
+          </select>
+          <button id="stations-refresh">刷新站点</button>
+        </div>
+      </div>
+      <div id="stations-progress" class="station-resource-progress">进入页面后读取联盟站点。</div>
+      <div id="stations-stats" class="stats"></div>
+      <div class="station-resource-table-wrap">
+        <table class="station-resource-table">
+          <thead>
+            <tr>
+              <th>编号</th>
+              <th>站点</th>
+              <th>星系</th>
+              <th>联盟领土</th>
+              <th>区域</th>
+              <th>矿石</th>
+              <th>硅酸盐</th>
+              <th>氢</th>
+              <th>合金</th>
+              <th>冰晶</th>
+              <th>量子尘</th>
+              <th>等离子核</th>
+              <th>生物萃取物</th>
+              <th>暗物质</th>
+              <th>反物质</th>
+              <th title="每种基础资源各自可用的容量">基础容量</th>
+              <th title="每种稀有资源各自可用的容量">稀有容量</th>
+            </tr>
+          </thead>
+          <tbody id="stations-tbody"></tbody>
+        </table>
+      </div>
+      <div class="pagination station-resource-pagination">
+        <button id="stations-prev">← 上一页</button>
+        <span id="stations-page">第 1 / 1 页</span>
+        <button id="stations-next">下一页 →</button>
+      </div>
+    </section>
   </div>
 
   <div id="market-content" style="display:none;">

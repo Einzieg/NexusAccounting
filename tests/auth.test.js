@@ -181,6 +181,70 @@ test('market counterpart names resolve by player id and are cached per server', 
   assert.equal(paths.length, 2);
 });
 
+test('alliance station resources enumerate territory stations without scanning the universe', async () => {
+  makeBrowserStub();
+  const paths = [];
+  globalThis.browser.tabs.query = async () => [{ id: 17 }];
+  globalThis.browser.tabs.sendMessage = async (tabId, message) => {
+    assert.equal(tabId, 17);
+    paths.push(message.path);
+    let data;
+    if (message.path === '/api/alliances/territories') {
+      data = {
+        territories: [{
+          sectorId: 25,
+          sectorIndex: 25,
+          sectorName: 'Alpha Arm - Sector 25',
+          armId: 1,
+          securityZone: 'open',
+          bonus: 0.06,
+          stations: [
+            { id: 1002, name: 'Station Beta', systemName: 'A25-15' },
+            {
+              id: 1003, name: 'Station Gamma', systemName: 'A25-25',
+              ore: 12, silicates: 3, basicStorage: 100000, rareStorage: 10000,
+            },
+          ],
+        }],
+      };
+    } else if (message.path === '/api/alliances/my') {
+      data = { alliance: { id: 13, tag: 'N13', name: 'N13 CLUB' } };
+    } else if (message.path === '/api/stations/1002') {
+      data = {
+        station: {
+          id: 1002, name: 'Station Beta', systemName: 'A25-15',
+          ore: 8989, silicates: 2995, hydrogen: 6843, alloys: 0,
+          cryoIce: 7, basicStorage: 100000, rareStorage: 10000,
+        },
+      };
+    } else {
+      throw new Error(`unexpected path ${message.path}`);
+    }
+    return { ok: true, status: 200, data, rateLimitRemaining: '399', rateLimitReset: '60' };
+  };
+
+  const { getAllianceStationResources } = await loadBackground();
+  await globalThis.nexusStorage.setActiveServer('nf');
+  const result = await getAllianceStationResources(true);
+
+  assert.equal(result.territoryCount, 1);
+  assert.deepEqual(result.alliance, { id: 13, tag: 'N13', name: 'N13 CLUB' });
+  assert.equal(result.stations.length, 2);
+  assert.equal(result.stations[0].sectorName, 'Alpha Arm - Sector 25');
+  assert.equal(result.stations[0].resources.ore, 8989);
+  assert.equal(result.stations[0].resources.cryoIce, 7);
+  assert.equal(result.stations[1].resources.ore, 12);
+  assert.deepEqual(paths, [
+    '/api/alliances/territories',
+    '/api/alliances/my',
+    '/api/stations/1002',
+  ]);
+  assert.equal(paths.some(path => path.includes('station-index')), false);
+
+  await getAllianceStationResources();
+  assert.equal(paths.length, 3, 'short-lived cache avoids re-reading every station');
+});
+
 test('fleet mission retries without a busy command vessel through the game tab', async () => {
   makeBrowserStub();
   const sent = [];

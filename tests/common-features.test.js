@@ -99,6 +99,26 @@ test('market history is a standalone lazily loaded dashboard view', () => {
   assert.match(build, /tabs\/market-history\.js/);
 });
 
+test('alliance station resources use territory-scoped station details', () => {
+  const readAddon = path => readFileSync(new URL(`../nexus-addon/${path}`, import.meta.url), 'utf8');
+  const html = readAddon('dashboard.html');
+  const dashboard = readAddon('dashboard.js');
+  const stations = readAddon('tabs/stations.js');
+  const background = readAddon('background.js');
+  const build = readAddon('build.py');
+
+  assert.match(html, /data-tab="stations">站点资源/);
+  assert.match(html, /id="stations-content"/);
+  assert.match(html, /仅枚举当前联盟领土接口返回的站点/);
+  assert.match(dashboard, /activeTab === 'stations'/);
+  assert.match(stations, /GET_ALLIANCE_STATION_RESOURCES/);
+  assert.match(background, /\/api\/alliances\/territories/);
+  assert.match(background, /`\/api\/stations\/\$\{ref\.id\}`/);
+  assert.match(background, /STATION_DETAIL_CONCURRENCY = 6/);
+  assert.doesNotMatch(background, /GET_ALLIANCE_STATION_RESOURCES[\s\S]{0,300}station-index/);
+  assert.match(build, /tabs\/stations\.js/);
+});
+
 test('Chrome Web Store publishing uses the API v2 CLI contract', () => {
   const build = readFileSync(new URL('../nexus-addon/build.py', import.meta.url), 'utf8');
   const release = readFileSync(
