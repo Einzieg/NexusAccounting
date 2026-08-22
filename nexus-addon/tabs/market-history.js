@@ -1,7 +1,7 @@
 // Standalone market trade analysis tab. History is fetched when this view is
 // entered, with a short cooldown to keep the live market tab lightweight.
 
-import { fmt, makeStatCard, marketTradeNet, resourceWeight, uiLabel } from '../common.js';
+import { fmt, makeStatCard, marketTradeNet, resourceWeight, uiLabel, weightsTooltip } from '../common.js';
 
 let history = [];
 let historyUserId = null;
@@ -77,6 +77,7 @@ async function loadHistory(force = false) {
 }
 
 function renderHistory() {
+  document.getElementById('m-weight-note').textContent = weightsTooltip();
   const list = filteredHistory();
   const flow = {};
   let profit = 0;

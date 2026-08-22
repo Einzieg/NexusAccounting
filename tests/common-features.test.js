@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
+  applyResourceWeights,
   applyServerTravelTime,
   cargoExpansionBonus,
   effectiveCargoCapacity,
+  fuelEstimate,
   marketTradeNet,
   normalizeRetreatThreshold,
   resourceWeight,
@@ -15,7 +17,9 @@ import {
   templateRegularShips,
   templateRetreatThreshold,
   templateWantsLeader,
+  weightsTooltip,
 } from '../nexus-addon/common.js';
+import { makeBrowserStub } from './helpers.js';
 
 test('fleet template helpers normalize retreat thresholds and command vessels', () => {
   const defs = [
@@ -85,7 +89,8 @@ test('market history is a standalone lazily loaded dashboard view', () => {
   const history = readAddon('tabs/market-history.js');
   const build = readAddon('build.py');
 
-  assert.match(html, /data-tab="market-history">交易分析</);
+  assert.match(html, /data-tab="market-history"/);
+  assert.match(html, /<span>交易分析<\/span>/);
   assert.match(html, /id="market-history-content"/);
   assert.match(html, /<th>交易对方<\/th>/);
   assert.match(dashboard, /activeTab === 'market-history'/);
@@ -99,6 +104,42 @@ test('market history is a standalone lazily loaded dashboard view', () => {
   assert.match(build, /tabs\/market-history\.js/);
 });
 
+test('resource weights are editable, global, and allow an explicit zero', () => {
+  applyResourceWeights({ ore: 1.5, silicates: 2, hydrogen: 3, alloys: 5, rare: 0 });
+  assert.equal(resourceWeight('ore'), 1.5);
+  assert.equal(resourceWeight('cryo_ice'), 0);
+  assert.match(weightsTooltip(), /矿石×1\.5/);
+  assert.match(weightsTooltip(), /其他稀有资源×0/);
+  applyResourceWeights({ ore: 1, silicates: 2, hydrogen: 3, alloys: 5, rare: 10 });
+});
+
+test('fuel estimates include mission type in the request and cache key', async () => {
+  const originalUrl = globalThis.URL;
+  const originalBrowser = globalThis.browser;
+  const originalStorage = globalThis.nexusStorage;
+  try {
+    makeBrowserStub();
+    globalThis.nexusStorage = {
+      getActiveServer: async () => ({ key: 'nf', id: 'NX-NF' }),
+    };
+    const requests = [];
+    globalThis.browser.runtime.sendMessage = async message => {
+      requests.push(message);
+      return { fuelCost: 12, travelTime: 80 };
+    };
+    const ships = [{ shipDefId: 7, quantity: 2 }];
+    await fuelEstimate(901, 902, ships, false, 'investigate');
+    await fuelEstimate(901, 902, ships, false, 'collect_debris');
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].body.missionType, 'investigate');
+    assert.equal(requests[1].body.missionType, 'collect_debris');
+  } finally {
+    globalThis.URL = originalUrl;
+    globalThis.browser = originalBrowser;
+    globalThis.nexusStorage = originalStorage;
+  }
+});
+
 test('alliance station resources use territory-scoped station details', () => {
   const readAddon = path => readFileSync(new URL(`../nexus-addon/${path}`, import.meta.url), 'utf8');
   const html = readAddon('dashboard.html');
@@ -107,16 +148,44 @@ test('alliance station resources use territory-scoped station details', () => {
   const background = readAddon('background.js');
   const build = readAddon('build.py');
 
-  assert.match(html, /data-tab="stations">站点资源/);
+  assert.match(html, /data-tab="stations"/);
+  assert.match(html, /<span>站点资源<\/span>/);
   assert.match(html, /id="stations-content"/);
   assert.match(html, /仅枚举当前联盟领土接口返回的站点/);
   assert.match(dashboard, /activeTab === 'stations'/);
   assert.match(stations, /GET_ALLIANCE_STATION_RESOURCES/);
+  assert.match(stations, /Math\.trunc\(number\)/);
   assert.match(background, /\/api\/alliances\/territories/);
   assert.match(background, /`\/api\/stations\/\$\{ref\.id\}`/);
   assert.match(background, /STATION_DETAIL_CONCURRENCY = 6/);
   assert.doesNotMatch(background, /GET_ALLIANCE_STATION_RESOURCES[\s\S]{0,300}station-index/);
   assert.match(build, /tabs\/stations\.js/);
+});
+
+test('Nocturne shell keeps fork tabs and embeds the upgraded simulator', () => {
+  const readAddon = path => readFileSync(new URL(`../nexus-addon/${path}`, import.meta.url), 'utf8');
+  const html = readAddon('dashboard.html');
+  const dashboard = readAddon('dashboard.js');
+  const build = readAddon('build.py');
+  const fleets = readAddon('tabs/fleets.js');
+  const asteroids = readAddon('tabs/asteroids.js');
+  const simulator = readAddon('tabs/simulator.js');
+
+  assert.match(html, /class="nx-sidebar"/);
+  assert.match(html, /href="nocturne\.css"/);
+  assert.match(html, /id="simulator-content"/);
+  assert.match(html, /id="w-ore"/);
+  assert.match(html, /data-tab="market-history"/);
+  assert.match(html, /data-tab="stations"/);
+  assert.doesNotMatch(html, /href="simulator\.html"/);
+  assert.match(dashboard, /initSimulatorTab/);
+  assert.match(dashboard, /resource_weights/);
+  assert.match(fleets, /escortZones/);
+  assert.match(asteroids, /escortTemplates/);
+  assert.match(build, /nocturne\.css/);
+  assert.match(build, /tabs\/simulator\.js/);
+  assert.doesNotMatch(build, /'simulator\.html'/);
+  assert.match(simulator, /#simulator-content \.fleet-table input/);
 });
 
 test('Chrome Web Store publishing uses the API v2 CLI contract', () => {

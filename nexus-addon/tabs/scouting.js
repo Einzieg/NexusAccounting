@@ -159,23 +159,24 @@ export async function initScoutingTab() {
 async function refreshTemplates() {
   scTemplates = await loadFleetTemplates();
   scTemplates.sort((a, b) => (a.name || '').localeCompare(b.name || ''));   // alphabetical dropdowns
+  const missionTemplates = scTemplates.filter(template => !(template.escortZones || []).length);
   const saved = await rememberedSelections();
   for (const id of ['sc-scan-template', 'sc-inv-template']) {
     const sel = document.getElementById(id);
     const want = saved[id] || sel.value;   // remembered choice survives tabs/sessions
     sel.textContent = '';
-    if (!scTemplates.length) {
+    if (!missionTemplates.length) {
       const o = document.createElement('option');
       o.value = ''; o.textContent = '— 无（请在“舰队模板”中创建）—';
       sel.appendChild(o);
       continue;
     }
-    for (const t of scTemplates) {
+    for (const t of missionTemplates) {
       const o = document.createElement('option');
       o.value = t.id; o.textContent = t.name;
       sel.appendChild(o);
     }
-    if (want && scTemplates.some(t => String(t.id) === want)) sel.value = want;
+    if (want && missionTemplates.some(t => String(t.id) === want)) sel.value = want;
   }
 }
 
@@ -546,24 +547,21 @@ function renderSurveys() {
   computeFuel();
 }
 
-// Fill the Fuel Cost column: one fuel-estimate per row for the selected
-// investigate template's ships (capped to the source planet). A generation
-// guard discards results from a superseded render/selection.
+// Estimate the same capped fleet that investigate() will actually dispatch.
 let fuelGen = 0;
 async function computeFuel() {
   const gen = ++fuelGen;
   const planetId = Number(document.getElementById('sc-planet').value);
   const fuelCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-fuel');
   const timeCells = () => document.querySelectorAll('#sc-surveys-tbody td.sc-time');
-  // Estimate uses the template as designed (not capped to the planet's stock).
-  const tpl = scTemplates.find(t => String(t.id) === document.getElementById('sc-inv-template').value);
-  const attachLeader = templateWantsLeader(tpl, scAllShips);
-  const ships = templateRegularShips(tpl, scAllShips);
-  if (!ships.length && !attachLeader) {
-    fuelCells().forEach(c => { c.textContent = '—'; c.title = tpl ? '模板中没有舰船' : '尚未选择模板'; });
+  const result = await templateShips(document.getElementById('sc-inv-template').value, planetId);
+  if (gen !== fuelGen) return;
+  if (result.error) {
+    fuelCells().forEach(c => { c.textContent = '—'; c.title = result.error; });
     timeCells().forEach(c => { c.textContent = '—'; });
     return;
   }
+  const { ships, attachLeader } = result;
 
   for (const tr of document.querySelectorAll('#sc-surveys-tbody tr')) {
     if (gen !== fuelGen) return;
@@ -571,12 +569,13 @@ async function computeFuel() {
     const timeCell = tr.querySelector('.sc-time');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
-    const est = await fuelEstimate(planetId, sysId, ships, attachLeader);
+    const est = await fuelEstimate(planetId, sysId, ships, attachLeader, 'investigate');
     if (gen !== fuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`;
+    cell.title = (est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`) +
+      (result.short ? '；模板舰船不足，估算已按实际可派出的舰队计算' : '');
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -848,6 +847,27 @@ function planFleet(total, ships) {
   return out;
 }
 
+// Cap an ideal cargo plan to the fleet that is actually available on the
+// source planet. Estimates and dispatches share this helper so their travel
+// time and fuel cannot drift apart.
+async function capCargoFleet(plan, planetId, availCache = null) {
+  let available = availCache?.get(planetId);
+  if (!available) {
+    available = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
+    if (availCache) availCache.set(planetId, available);
+  }
+  if (available.error) return { error: available.error };
+  const capOf = id => (scCargoShips.find(ship => ship.shipDefId === id) || {}).cap || 0;
+  const ships = plan
+    .map(ship => ({
+      shipDefId: ship.shipDefId,
+      quantity: Math.min(ship.quantity, available.available[ship.shipDefId] || 0),
+    }))
+    .filter(ship => ship.quantity > 0);
+  const carried = ships.reduce((sum, ship) => sum + ship.quantity * capOf(ship.shipDefId), 0);
+  return { ships, carried };
+}
+
 async function loadDebris() {
   const { debris_fields, debris_last_check } = await globalThis.nexusStorage.get(['debris_fields', 'debris_last_check']);
   scDebris = (debris_fields || []).map(f => ({ ...f, total: (f.ore || 0) + (f.silicates || 0) + (f.alloys || 0) }));
@@ -977,25 +997,36 @@ async function computeDebrisFuel() {
     return;
   }
   const nameOf = id => shipDisplayName(scCargoShips.find(c => c.shipDefId === id), '#' + id);
+  const availCache = new Map();
   for (const tr of document.querySelectorAll('#sc-debris-tbody tr')) {
     if (gen !== debrisFuelGen) return;
-    const ships = planFleet(Number(tr.dataset.total) || 0, cargo);
-    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
     const nCell = tr.querySelector('.sc-debris-shipn');
-    if (nCell) nCell.textContent = ships.length ? named : '—';
-
     const cell = tr.querySelector('.sc-debris-fuel');
     const timeCell = tr.querySelector('.sc-debris-time');
     const sysId = Number(tr.dataset.system);
     const srcId = debrisSourcePlanet(sysId)?.id;
     if (!cell || !sysId || !srcId) continue;
+    const total = Number(tr.dataset.total) || 0;
+    const plan = planFleet(total, cargo);
+    const capped = await capCargoFleet(plan, srcId, availCache);
+    if (gen !== debrisFuelGen) return;
+    if (capped.error) {
+      if (nCell) nCell.textContent = '—';
+      cell.textContent = '—'; cell.title = capped.error;
+      if (timeCell) timeCell.textContent = '—';
+      continue;
+    }
+    const { ships, carried } = capped;
+    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
+    if (nCell) nCell.textContent = ships.length ? named : '—';
     if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
-    const est = await fuelEstimate(srcId, sysId, ships);
+    const est = await fuelEstimate(srcId, sysId, ships, false, 'collect_debris');
     if (gen !== debrisFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`;
+    cell.title = (est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`) +
+      (carried < total ? '；已按出发星球实际可用货运舰计算' : '');
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -1011,14 +1042,10 @@ async function collectDebris(field) {
   if (!plan.length) { status.textContent = '请先在上方选择货运舰船。'; return; }
 
   // Cap to what the source planet actually has; warn if that can't carry it all.
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { status.textContent = `错误：${av.error}`; return; }
-  const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
-  const ships = plan
-    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
-    .filter(s => s.quantity > 0);
+  const capped = await capCargoFleet(plan, planetId);
+  if (capped.error) { status.textContent = `错误：${capped.error}`; return; }
+  const { ships, carried } = capped;
   if (!ships.length) { status.textContent = '该星球没有已选中的货运舰船。'; return; }
-  const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
   const short = carried < field.total;
   const escortRetreatThreshold = selectedInvestigationRetreatThreshold();
 
@@ -1134,24 +1161,35 @@ async function computeSalvageFuel() {
     return;
   }
   const nameOf = id => shipDisplayName(scCargoShips.find(c => c.shipDefId === id), '#' + id);
+  const availCache = new Map();
   for (const tr of document.querySelectorAll('#sc-salvage-tbody tr')) {
     if (gen !== salvageFuelGen) return;
-    const ships = planFleet(Number(tr.dataset.total) || 0, cargo);
-    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
     const nCell = tr.querySelector('.sc-salvage-shipn');
-    if (nCell) nCell.textContent = ships.length ? named : '—';
-
     const cell = tr.querySelector('.sc-salvage-fuel');
     const timeCell = tr.querySelector('.sc-salvage-time');
     const sysId = Number(tr.dataset.system);
     if (!cell || !sysId) continue;
+    const total = Number(tr.dataset.total) || 0;
+    const plan = planFleet(total, cargo);
+    const capped = await capCargoFleet(plan, planetId, availCache);
+    if (gen !== salvageFuelGen) return;
+    if (capped.error) {
+      if (nCell) nCell.textContent = '—';
+      cell.textContent = '—'; cell.title = capped.error;
+      if (timeCell) timeCell.textContent = '—';
+      continue;
+    }
+    const { ships, carried } = capped;
+    const named = ships.map(s => `${s.quantity}× ${nameOf(s.shipDefId)}`).join(', ');
+    if (nCell) nCell.textContent = ships.length ? named : '—';
     if (!ships.length) { cell.textContent = '—'; if (timeCell) timeCell.textContent = '—'; continue; }
-    const est = await fuelEstimate(planetId, sysId, ships);
+    const est = await fuelEstimate(planetId, sysId, ships, false, 'collect_salvage');
     if (gen !== salvageFuelGen) return;
     if (est.error) { cell.textContent = '—'; cell.title = est.error; if (timeCell) timeCell.textContent = '—'; continue; }
     cell.textContent = `${est.fuelCost}`;
     cell.style.color = est.inRange === false ? '#ff7b72' : '';
-    cell.title = est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`;
+    cell.title = (est.inRange === false ? '超出航程' : `距离 ${est.distance.toFixed(1)} 光年`) +
+      (carried < total ? '；已按出发星球实际可用货运舰计算' : '');
     if (timeCell) timeCell.textContent = est.travelTime != null ? fmtCountdown(est.travelTime * 1000) : '—';
   }
 }
@@ -1166,14 +1204,10 @@ async function collectSalvage(salvage) {
   if (!plan.length) { status.textContent = '请先在上方选择货运舰船。'; return; }
 
   // Cap to what the source planet has; warn if that can't carry it all.
-  const av = await browser.runtime.sendMessage({ type: 'GET_PLANET_SHIPS', planetId });
-  if (av.error) { status.textContent = `错误：${av.error}`; return; }
-  const capOf = id => (scCargoShips.find(s => s.shipDefId === id) || {}).cap || 0;
-  const ships = plan
-    .map(s => ({ shipDefId: s.shipDefId, quantity: Math.min(s.quantity, av.available[s.shipDefId] || 0) }))
-    .filter(s => s.quantity > 0);
+  const capped = await capCargoFleet(plan, planetId);
+  if (capped.error) { status.textContent = `错误：${capped.error}`; return; }
+  const { ships, carried } = capped;
   if (!ships.length) { status.textContent = '该星球没有已选中的货运舰船。'; return; }
-  const carried = ships.reduce((sum, s) => sum + s.quantity * capOf(s.shipDefId), 0);
   const short = carried < salvage.total;
   const escortRetreatThreshold = selectedInvestigationRetreatThreshold();
 

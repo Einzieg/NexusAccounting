@@ -4,7 +4,7 @@
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-import { activeTab, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
+import { RARE_WEIGHT, RESOURCE_WEIGHTS, activeTab, applyResourceWeights, confirmDialog, dayKey, fuelForMode, getLabelKey, getMode, infoDialog, periodLabelFor, renderMarkdown, renderNetCards, setActiveTab, setStore, store } from './common.js';
 import { renderBattlesTab } from './tabs/battles.js';
 import { renderDebrisTab } from './tabs/debris.js';
 import { renderExpeditionsTab, setExpPage } from './tabs/expeditions.js';
@@ -17,6 +17,7 @@ import { initFinderTab } from './tabs/finder.js';
 import { initMarketTab } from './tabs/market.js';
 import { initMarketHistoryTab } from './tabs/market-history.js';
 import { initStationsTab } from './tabs/stations.js';
+import { initSimulatorTab } from './tabs/simulator.js';
 import { renderGlobalTab } from './tabs/global.js';
 import { renderMiningTab, setMiningPage } from './tabs/mining.js';
 import { renderPiratesTab, setPirateCurrentPage } from './tabs/pirates.js';
@@ -75,23 +76,29 @@ document.getElementById('build-version')?.addEventListener('click', () => showUp
 export async function loadAll() {
   const server = await globalThis.nexusStorage.getActiveServer();
   document.getElementById('server-select').value = server.key;
-  setStore(await globalThis.nexusStorage.get([
-    'totals', 'daily', 'hourly', 'resources_lost', 'event_breakdown',
-    'recent_reports', 'ships', 'last_scrape', 'last_error', 'records_cap',
-    'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
-    'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
-    'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
-    'debris_fields', 'debris_last_check',
-    'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
-    'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
-    'expedition_resources_lost', 'wormhole_resources_lost', 'stats_drift',
-    'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'xeno_resources_lost',
-    'pvp_recent_reports',
-    'research', 'research_speed_mult', 'active_research', 'fuel_log',
-  ]));
+  const [serverData, globalSettings] = await Promise.all([
+    globalThis.nexusStorage.get([
+      'totals', 'daily', 'hourly', 'resources_lost', 'event_breakdown',
+      'recent_reports', 'ships', 'last_scrape', 'last_error', 'records_cap',
+      'pirate_totals', 'pirate_daily', 'pirate_resources_lost',
+      'pirate_outcomes', 'pirate_debris_total', 'pirate_recent_reports',
+      'mining_totals', 'mining_daily', 'mining_resources_lost', 'mining_recent_reports',
+      'debris_fields', 'debris_last_check',
+      'debris_collected', 'debris_active_runs', 'debris_collection_log', 'debris_resources_lost',
+      'exp_totals', 'expedition_totals', 'wormhole_totals', 'exp_daily', 'exp_recent_reports',
+      'expedition_resources_lost', 'wormhole_resources_lost', 'stats_drift',
+      'xeno_totals', 'xeno_daily', 'xeno_recent_reports', 'xeno_resources_lost',
+      'pvp_recent_reports',
+      'research', 'research_speed_mult', 'active_research', 'fuel_log',
+    ]),
+    browser.storage.local.get('resource_weights'),
+  ]);
+  setStore({ ...serverData, ...globalSettings });
 
   const cap = store.records_cap ?? 5000;
   document.getElementById('records-cap').value = cap === Infinity ? 0 : cap;
+  applyResourceWeights(store.resource_weights);
+  populateWeightInputs();
   updateStatus(store.last_scrape, store.last_error);
   renderAll();
   updateStorageFooter();
@@ -198,6 +205,10 @@ export function renderAll() {
     initStationsTab();
     return;
   }
+  if (activeTab === 'simulator') {
+    initSimulatorTab();
+    return;
+  }
   if (activeTab === 'market-history') {
     initMarketHistoryTab();
     return;
@@ -241,6 +252,7 @@ export const TAB_CONTENT = {
   scouting: 'scouting-content',
   xeno: 'xeno-content',
   stations: 'stations-content',
+  simulator: 'simulator-content',
   market: 'market-content',
   'market-history': 'market-history-content',
   techtree: 'techtree-content',
@@ -253,12 +265,19 @@ document.querySelectorAll('.tab').forEach(btn => {
     for (const [tab, id] of Object.entries(TAB_CONTENT)) {
       document.getElementById(id).style.display = tab === activeTab ? '' : 'none';
     }
-    // View mode and records cap are meaningless on the finder and debris tabs.
-    document.getElementById('global-controls').style.display =
-      (activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' || activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'stations' || activeTab === 'market' || activeTab === 'market-history' || activeTab === 'battles') ? 'none' : '';
+    const filterless = activeTab === 'finder' || activeTab === 'asteroids' || activeTab === 'fleets' ||
+      activeTab === 'scouting' || activeTab === 'techtree' || activeTab === 'stations' ||
+      activeTab === 'market' || activeTab === 'market-history' || activeTab === 'simulator';
+    document.getElementById('global-controls').style.display = 'none';
+    document.getElementById('nx-filter-controls').style.display = filterless ? 'none' : 'inline-flex';
     positionControls();
     renderAll();
+    document.body.classList.remove('nx-sidebar-open');
   });
+});
+
+document.getElementById('nx-sidebar-toggle')?.addEventListener('click', () => {
+  document.body.classList.toggle('nx-sidebar-open');
 });
 
 // Open directly on a tab when linked with a hash, e.g. dashboard.html#asteroids
@@ -366,6 +385,28 @@ document.getElementById('btn-save-cap').addEventListener('click', async function
   document.getElementById('cap-warning').style.display = 'none';
   this.textContent = '已保存 ✓';
   setTimeout(() => { this.textContent = '保存'; }, 1500);
+});
+
+function populateWeightInputs() {
+  for (const key of Object.keys(RESOURCE_WEIGHTS)) {
+    const input = document.getElementById(`w-${key}`);
+    if (input) input.value = RESOURCE_WEIGHTS[key];
+  }
+  const rare = document.getElementById('w-rare');
+  if (rare) rare.value = RARE_WEIGHT;
+}
+
+document.getElementById('btn-save-weights')?.addEventListener('click', async function () {
+  const weights = {};
+  for (const key of [...Object.keys(RESOURCE_WEIGHTS), 'rare']) {
+    weights[key] = parseFloat(document.getElementById(`w-${key}`).value);
+  }
+  applyResourceWeights(weights);
+  populateWeightInputs();
+  await browser.storage.local.set({ resource_weights: { ...RESOURCE_WEIGHTS, rare: RARE_WEIGHT } });
+  renderAll();
+  this.textContent = '已保存 ✓';
+  setTimeout(() => { this.textContent = '保存权重'; }, 1500);
 });
 
 // ── Rebuild aggregates ─────────────────────────────────────────────────────

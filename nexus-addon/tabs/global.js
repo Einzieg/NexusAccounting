@@ -16,7 +16,7 @@ export const SOURCE_COLORS = {
 // Weighted value of a resource bag (ore×1 … alloys×5, exotics×10).
 export function weightedValue(res) {
   let v = 0;
-  for (const k of GLOBAL_RES_KEYS) v += resourceVal(res, k) * (RESOURCE_WEIGHTS[k] || RARE_WEIGHT);
+  for (const k of GLOBAL_RES_KEYS) v += resourceVal(res, k) * (RESOURCE_WEIGHTS[k] ?? RARE_WEIGHT);
   return v;
 }
 

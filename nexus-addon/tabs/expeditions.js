@@ -96,7 +96,7 @@ async function initExpeditionLaunch() {
 }
 
 async function refreshExpeditionTemplates() {
-  eTemplates = await loadFleetTemplates();
+  eTemplates = (await loadFleetTemplates()).filter(template => !(template.escortZones || []).length);
   eTemplates.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   const sel = document.getElementById('e-launch-template');
   const saved = await rememberedSelections();

@@ -4,9 +4,9 @@
 // there is no extra background aggregation or storage. Span = recent records.
 
 import {
-  PER_PAGE, fmt, escapeHtml, makeStatCard, store, zoneCell, dayKey,
+  PER_PAGE, fmt, escapeHtml, makeStatCard, store, zoneCell, dayKey, getWindowRange,
   computeResourcesLost, combinedLost, emptyResources,
-  RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI, shipDisplayName, uiLabel,
+  RESOURCE_WEIGHTS, RARE_WEIGHT, EXTRA_RES_KEYS_UI, shipDisplayName, uiLabel, weightsTooltip,
 } from '../common.js';
 
 // Resource cost of a record's ship losses (destroyed + half-cost repair).
@@ -58,8 +58,6 @@ function meanFuelByType(inRange) {
 
 const battleSort = { key: 'created_at', dir: -1 };
 let battleFilter = 'all';
-let battleView = 'all';                // View preset driving the Days window
-let battleFrom = '', battleTo = '';   // Days window (local day, '' = open)
 let battlePage = 1;
 const expanded = new Set();
 
@@ -361,7 +359,9 @@ export function renderBattlesTab() {
 
   const allRows = collectBattles();
 
-  // Controls — Source filter + Days period window (like Survey/Global).
+  // Source stays local to Battles; the top bar's shared view/date controls
+  // provide the period window, matching the other statistics tabs.
+  const { from: battleFrom, to: battleTo } = getWindowRange();
   const inRange = ts => {
     const d = dayKey(ts);
     return (!battleFrom || d >= battleFrom) && (!battleTo || d <= battleTo);
@@ -372,44 +372,21 @@ export function renderBattlesTab() {
 
   const bar = document.createElement('div');
   bar.style.cssText = 'display:flex;align-items:center;gap:8px;margin:12px 0;flex-wrap:wrap';
-  const inputCss = 'background:#21262d;border:1px solid #30363d;color:#e6edf3;padding:4px 8px;border-radius:6px';
   const gray = txt => { const s = document.createElement('span'); s.style.color = '#8b949e'; s.textContent = txt; return s; };
-
-  // View preset — fills the Days window (like Global). A manual Days edit
-  // overrides it: the typed dates drive filtering, View is left untouched.
-  const viewSel = document.createElement('select');
-  viewSel.style.cssText = inputCss;
-  for (const [v, lbl] of [['all', '全部时间'], ['daily', '当天'], ['last3', '最近 3 天'], ['last7', '最近 7 天'], ['last30', '最近 30 天']]) {
-    const o = document.createElement('option'); o.value = v; o.textContent = lbl;
-    if (v === battleView) o.selected = true; viewSel.appendChild(o);
-  }
-  viewSel.addEventListener('change', () => {
-    battleView = viewSel.value;
-    const span = { last3: 3, last7: 7, last30: 30 }[battleView];
-    const now = Date.now();
-    if (battleView === 'all') { battleFrom = ''; battleTo = ''; }
-    else if (battleView === 'daily') { battleFrom = battleTo = dayKey(now); }
-    else if (span) { battleTo = dayKey(now); battleFrom = dayKey(now - (span - 1) * 86400000); }
-    battlePage = 1; renderBattlesTab();
-  });
-
-  const sel = document.createElement('select');
-  sel.style.cssText = inputCss;
+  const sourceBox = document.createElement('div');
+  sourceBox.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap';
   for (const s of ['all', ...new Set(allRows.map(r => r.source))]) {
-    const o = document.createElement('option'); o.value = s; o.textContent = s === 'all' ? '全部' : s;
-    if (s === battleFilter) o.selected = true; sel.appendChild(o);
+    const active = s === battleFilter;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = s === 'all' ? '全部' : s;
+    button.style.cssText = `padding:4px 10px;border-radius:6px;cursor:pointer;font-size:0.8rem;` +
+      `border:1px solid var(--color-accent);color:${active ? 'var(--color-bg)' : 'var(--color-accent)'};` +
+      `background:${active ? 'var(--color-accent)' : 'transparent'};`;
+    button.addEventListener('click', () => { battleFilter = s; battlePage = 1; renderBattlesTab(); });
+    sourceBox.appendChild(button);
   }
-  sel.addEventListener('change', () => { battleFilter = sel.value; battlePage = 1; renderBattlesTab(); });
-
-  const from = document.createElement('input'); from.type = 'date'; from.value = battleFrom; from.style.cssText = inputCss;
-  const to = document.createElement('input'); to.type = 'date'; to.value = battleTo; to.style.cssText = inputCss;
-  from.addEventListener('change', () => { battleFrom = from.value; battlePage = 1; renderBattlesTab(); });
-  to.addEventListener('change', () => { battleTo = to.value; battlePage = 1; renderBattlesTab(); });
-  const clr = document.createElement('button'); clr.textContent = '清除'; clr.style.cssText = inputCss + ';cursor:pointer';
-  clr.disabled = !windowed;
-  clr.addEventListener('click', () => { battleFrom = ''; battleTo = ''; battleView = 'all'; battlePage = 1; renderBattlesTab(); });
-
-  bar.append(gray('视图：'), viewSel, gray('来源：'), sel, gray('日期：'), from, gray('→'), to, clr);
+  bar.append(gray('来源：'), sourceBox);
   root.append(bar);
 
   // Resource economy across the current selection (source + window).
@@ -482,7 +459,7 @@ export function renderBattlesTab() {
   const totalNet = weighted(net);
   const netTotalCard = makeStatCard('总净收益', (totalNet >= 0 ? '+' : '') + fmt(totalNet), '',
     totalNet >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  netTotalCard.title = '加权：矿石×1、硅酸盐×2、氢×3、合金×5、稀有资源×10。'
+  netTotalCard.title = weightsTooltip()
     + (fuel ? ` 已计入约 ${fmt(fuel)} 氢燃料。` : '');
   const netLabel = document.createElement('div');
   netLabel.className = 'section-label'; netLabel.textContent = '净收益（所得资源 − 舰船损失成本）';

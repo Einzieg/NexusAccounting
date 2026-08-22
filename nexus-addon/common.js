@@ -1,6 +1,12 @@
 // Shared state and helpers used by every dashboard tab.
 // Loaded first — all other dashboard scripts depend on it.
 
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.color = '#9397ab';
+  Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+  Chart.defaults.font.size = 11;
+}
+
 export let store = {};   // full storage snapshot
 export function setStore(s) { store = s; }   // setter: other modules can't reassign an import
 
@@ -172,6 +178,7 @@ export async function editFleetDialog({
   retreatThresholdOptional = false,
   leaderOptional = false,
   templates = null,
+  escortTemplates = [],
   selectedTemplateId = null,
   templateShipDefs = [],
   templateMemoryKey = '',
@@ -187,6 +194,7 @@ export async function editFleetDialog({
   const totalCargoBonus = cargoBonus.bonus + accountCargo.bonus;
   const commandDef = Object.values(defs).find(isCommandVessel) || null;
   const allTemplates = Array.isArray(templates) ? templates : [];
+  const allEscortTemplates = Array.isArray(escortTemplates) ? escortTemplates : [];
   const templateDefs = templateShipDefs && templateShipDefs.length ? templateShipDefs : Object.values(defs);
   let selectedTemplate = allTemplates.find(t => String(t.id) === String(selectedTemplateId)) || allTemplates[0] || null;
   let selectedTemplateKey = selectedTemplate ? String(selectedTemplate.id) : '';
@@ -227,10 +235,12 @@ export async function editFleetDialog({
     : normalizeRetreatThreshold(escortRetreatThreshold);
   let retreatEnabled = retreatThreshold != null;
   const templateIds = allTemplates.flatMap(t => templateRegularShips(t, templateDefs).map(s => s.shipDefId));
+  const escortTemplateIds = allEscortTemplates.flatMap(t => templateRegularShips(t, templateDefs).map(s => s.shipDefId));
   const rememberedIds = allTemplates.flatMap(t => Object.keys((rememberedFor(t) && rememberedFor(t).ships) || {}).map(Number));
   const ids = [...new Set([
     ...Object.keys(seed).map(Number),
     ...templateIds,
+    ...escortTemplateIds,
     ...rememberedIds,
     ...Object.keys(avail).map(Number).filter(id => (avail[id] || 0) > 0),
   ])].filter(id => !isCommandVessel(defs[id]));
@@ -451,11 +461,51 @@ export async function editFleetDialog({
       rows.style.color = '#8b949e';
     }
     const ok = document.createElement('button');   // declared early for refresh()
+    let escortButtonRow = null;
+    const rebuildEscortButtons = () => {
+      if (!escortButtonRow) return;
+      escortButtonRow.textContent = '';
+      const minerCount = miningShipIds
+        ? [...miningShipIds].reduce((sum, id) => sum + (state.get(id) || 0), 0)
+        : 0;
+      for (const template of allEscortTemplates) {
+        const ships = templateRegularShips(template, templateDefs);
+        const requirements = ships.map(ship => ({
+          shipDefId: ship.shipDefId,
+          quantity: Math.ceil((Number(ship.quantity) || 0) * (template.escortPerMiner ? minerCount : 1)),
+        })).filter(ship => ship.quantity > 0);
+        const available = requirements.length > 0 && requirements.every(ship =>
+          (avail[ship.shipDefId] || 0) >= ship.quantity);
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = template.escortPerMiner
+          ? `${template.name}（${minerCount} 艘采矿舰）`
+          : template.name;
+        button.style.cssText = `padding:4px 11px;border-radius:6px;cursor:pointer;font-size:0.8rem;` +
+          `border:1px solid ${available ? '#6fce8f' : '#e0736b'};background:transparent;` +
+          `color:${available ? '#6fce8f' : '#e0736b'};`;
+        button.title = requirements.map(ship =>
+          `${shipDisplayName(defs[ship.shipDefId], `#${ship.shipDefId}`)} × ${ship.quantity}（拥有 ${avail[ship.shipDefId] || 0}）`)
+          .join('\n') || '该护航模板没有舰船';
+        button.addEventListener('click', () => {
+          for (const ship of requirements) {
+            const quantity = Math.min(ship.quantity, avail[ship.shipDefId] || 0);
+            if (quantity <= 0) continue;
+            state.set(ship.shipDefId, Math.max(state.get(ship.shipDefId) || 0, quantity));
+            const input = inputs.get(ship.shipDefId);
+            if (input) input.value = String(state.get(ship.shipDefId));
+          }
+          refresh();
+        });
+        escortButtonRow.appendChild(button);
+      }
+    };
     const refresh = () => {
       ok.disabled = !effective().length && !leaderAttached;
       ok.style.opacity = ok.disabled ? '0.5' : '1';
       if (leaderBadge) leaderBadge.textContent = leaderAttached ? '已编入' : '未编入';
       refreshMiningCargo();
+      rebuildEscortButtons();
     };
     for (const id of ids) {
       const def = defs[id] || {};
@@ -488,6 +538,18 @@ export async function editFleetDialog({
       inputs.set(id, inp);
     }
     box.append(rows);
+    if (allEscortTemplates.length) {
+      const escortSection = document.createElement('div');
+      escortSection.style.cssText = 'border:1px solid #6fce8f55;border-radius:6px;background:rgba(111,206,143,.06);padding:8px;margin-top:8px';
+      const escortTitle = document.createElement('div');
+      escortTitle.textContent = '当前区域可用护航模板';
+      escortTitle.style.cssText = 'color:#8b949e;font-size:0.78rem;margin-bottom:6px';
+      escortButtonRow = document.createElement('div');
+      escortButtonRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px';
+      escortSection.append(escortTitle, escortButtonRow);
+      box.append(escortSection);
+      rebuildEscortButtons();
+    }
     miningCargoBox = document.createElement('div');
     miningCargoBox.style.cssText = 'display:none;border:1px solid #e3b34166;border-radius:6px;background:rgba(227,179,65,.08);padding:8px;margin-top:8px';
     box.append(miningCargoBox);
@@ -621,18 +683,21 @@ export function infoDialog(title, body) {
   ok.focus();
 }
 
-// Fuel estimate, cached per source+destination+ships so a known route with the
-// selected template never re-hits the API. Errors aren't cached (so they retry).
+// Fuel estimate, cached per source+destination+ships+mission type so a known
+// route with the selected template never re-hits the API. The game uses its
+// fast mission travel formula only when missionType is present.
 const _fuelCache = new Map();
-export async function fuelEstimate(sourcePlanetId, targetSystemId, ships, attachLeader = false) {
+export async function fuelEstimate(sourcePlanetId, targetSystemId, ships, attachLeader = false, missionType = '') {
   const server = await globalThis.nexusStorage?.getActiveServer?.().catch(() => null);
   const sig = `${attachLeader ? 'leader' : 'no-leader'}|${ships.map(s => `${s.shipDefId}:${s.quantity}`).sort().join(',')}`;
   const serverKey = server?.key || server?.id || server?.hostname || server?.origin || '';
-  const key = `${serverKey}|${sourcePlanetId}|${targetSystemId}|${sig}`;
+  const key = `${serverKey}|${sourcePlanetId}|${targetSystemId}|${sig}|${missionType}`;
   if (_fuelCache.has(key)) return _fuelCache.get(key);
+  const body = { sourcePlanetId, targetSystemId, ships, attachLeader: !!attachLeader, hangarAssignments: {} };
+  if (missionType) body.missionType = missionType;
   const est = await browser.runtime.sendMessage({
     type: 'GET_FUEL_ESTIMATE',
-    body: { sourcePlanetId, targetSystemId, ships, attachLeader: !!attachLeader, hangarAssignments: {} },
+    body,
   });
   const adjusted = est && !est.error && est.travelTime != null
     ? { ...est, rawTravelTime: est.rawTravelTime ?? est.travelTime, travelTime: applyServerTravelTime(est.travelTime, server) }
@@ -1737,15 +1802,32 @@ export function renderLostCards(destroyedId, repairId, lost, periodLabel) {
   if (repairId) fillResourceCards(repairId, lost.repair, periodLabel);
 }
 
-// Relative value of each resource, used to weight the net total.
+// Relative value of each resource, used to weight the net total. Values are
+// mutable in place so every tab sees user changes without being re-imported.
 export const RESOURCE_WEIGHTS = {
   ore: 1, silicates: 2, hydrogen: 3, alloys: 5,
   precursor_fragments: 50, artifact: 2000,
 };
-export const RARE_WEIGHT = 10;   // exotics with no specific weight above (ice, quantum dust, …)
+export let RARE_WEIGHT = 10;   // exotics with no specific weight above (ice, quantum dust, …)
+
+export function applyResourceWeights(weights) {
+  if (!weights) return;
+  for (const key of Object.keys(RESOURCE_WEIGHTS)) {
+    const value = Number(weights[key]);
+    if (Number.isFinite(value) && value >= 0) RESOURCE_WEIGHTS[key] = value;
+  }
+  const rare = Number(weights.rare);
+  if (Number.isFinite(rare) && rare >= 0) RARE_WEIGHT = rare;
+}
+
+export function weightsTooltip() {
+  const w = RESOURCE_WEIGHTS;
+  return `加权：矿石×${w.ore}、硅酸盐×${w.silicates}、氢×${w.hydrogen}、合金×${w.alloys}、` +
+    `先驱碎片×${w.precursor_fragments}、遗物×${w.artifact}、其他稀有资源×${RARE_WEIGHT}。`;
+}
 
 export function resourceWeight(key) {
-  return RESOURCE_WEIGHTS[key] || RARE_WEIGHT;
+  return RESOURCE_WEIGHTS[key] ?? RARE_WEIGHT;
 }
 
 export function marketTradeNet(trade, userId) {
@@ -1787,14 +1869,15 @@ export function renderNetCards(containerId, collected, lost, periodLabel, fuelHy
     const spent = resourceVal(cost, key);
     if (!got && !spent) continue;
     const v = got - spent;
-    total += v * (RESOURCE_WEIGHTS[key] || RARE_WEIGHT);
+    total += v * (RESOURCE_WEIGHTS[key] ?? RARE_WEIGHT);
     el.appendChild(makeStatCard(`${label}净收益${periodLabel}`, (v >= 0 ? '+' : '') + fmt(v), cls));
   }
   const totalCard = makeStatCard(`总净收益${periodLabel}`, (total >= 0 ? '+' : '') + fmt(total),
     '', total >= 0 ? 'color:#56d364' : 'color:#ff7b72');
-  totalCard.title = '加权：矿石×1、硅酸盐×2、氢×3、合金×5、先驱碎片×50、遗物×2000、其他稀有资源×10。'
+  totalCard.title = weightsTooltip()
     + (fuel ? ` 已计入约 ${fmt(fuel)} 氢燃料。` : '');
   el.appendChild(totalCard);
+  el.dataset.weightsNote = weightsTooltip();
 }
 
 // Doughnut of a loot/resource breakdown (ore, silicates, hydrogen, alloys and

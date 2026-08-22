@@ -551,19 +551,20 @@ async function refreshTemplates() {
   const saved = await rememberedSelections();
   const want = saved['af-template-select'] || sel.value;   // survives tabs/sessions
   sel.textContent = '';
-  if (!afTemplates.length) {
+  const miningTemplates = afTemplates.filter(template => !(template.escortZones || []).length);
+  if (!miningTemplates.length) {
     const o = document.createElement('option');
     o.value = ''; o.textContent = '— 无（请在“舰队模板”中创建）—';
     sel.appendChild(o);
     renderTemplateSummary();
     return;
   }
-  for (const t of afTemplates) {
+  for (const t of miningTemplates) {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name;
     sel.appendChild(o);
   }
-  if (want && afTemplates.some(t => String(t.id) === want)) sel.value = want;
+  if (want && miningTemplates.some(t => String(t.id) === want)) sel.value = want;
   renderTemplateSummary();
 }
 
@@ -773,6 +774,11 @@ async function sendMineMission(f) {
     }
   }
   const miningShipIds = new Set(afAllShips.filter(d => MINING_SHIPS.has(d.name)).map(d => d.shipDefId));
+  const fieldZone = f.zone && f.zone !== '—' ? f.zone : null;
+  const escortTemplates = fieldZone
+    ? afTemplates.filter(template => (template.escortZones || []).includes(fieldZone))
+    : [];
+  const miningTemplates = afTemplates.filter(template => !(template.escortZones || []).length);
 
   const ships = await editFleetDialog({
     title: `开采 ${f.name}`,
@@ -782,7 +788,8 @@ async function sendMineMission(f) {
     escortRetreatThreshold: miningTemplateRetreatThreshold(tpl),
     retreatThresholdOptional: true,
     leaderOptional: true,
-    templates: afTemplates,
+    templates: miningTemplates,
+    escortTemplates,
     selectedTemplateId: tpl?.id,
     templateShipDefs: afAllShips,
     templateMemoryKey: 'asteroid-mining',
@@ -1120,7 +1127,7 @@ async function computeFuel() {
     }
     let est;
     try {
-      est = await fuelEstimate(planetId, sysId, ships, attachLeader);
+      est = await fuelEstimate(planetId, sysId, ships, attachLeader, 'mine');
     } catch (err) {
       est = { error: err && err.message ? err.message : String(err) };
     }

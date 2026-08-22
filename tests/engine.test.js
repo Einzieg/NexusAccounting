@@ -64,6 +64,24 @@ test('research modifiers compute exact in-game rates', () => {
   assert.equal(m.ship.bomber, 0.1);              // 5×2%
 });
 
+test('simulator trace includes per-type losses and per-round damage', () => {
+  const result = engine.simulateOnce({ fighter: 3 }, { scout: 2 }, {
+    maxRounds: 3,
+    variance: 0,
+    shieldRegen: false,
+    attackerMods: engine.NO_MODS,
+    defenderMods: engine.NO_MODS,
+    defense: {},
+    trace: true,
+  });
+  assert.ok(result.trace.length > 0);
+  const round = result.trace[0];
+  assert.equal(typeof round.attackerDmg, 'number');
+  assert.equal(typeof round.defenderDmg, 'number');
+  assert.equal(typeof round.attackerLostByType, 'object');
+  assert.equal(typeof round.defenderLostByType, 'object');
+});
+
 // Real battle: 10 interceptors vs 8 scouts + 4 fighters → won round 2, 0 losses.
 test('calibration: interceptor raid (reference A)', () => {
   const r = engine.runSimulations({ interceptor: 10 }, { scout: 8, fighter: 4 }, BASE_OPTS);

@@ -5,7 +5,7 @@
 import { commandVesselIds, clearAvailStrip, isCommandVessel, normalizeRetreatThreshold, rememberedSelections, rememberSelection, renderAvailStrip, shipDisplayName, templateRetreatThreshold } from '../common.js';
 
 let inited = false;
-let templates = [];          // [{ id, name, ships: { shipDefId: qty }, attachLeader, escortRetreatThreshold }]
+let templates = [];          // [{ id, name, ships, attachLeader, escortRetreatThreshold, escortZones, escortPerMiner }]
 let shipDefs = [];           // catalog: [{ shipDefId, name, shipClass, miningCargo, attack, ... }]
 let ftPlanets = [];          // owned planets available for the inventory strip
 let currentId = null;        // template open in the editor
@@ -28,16 +28,14 @@ const MINING_SHIPS = {
 };
 
 function statText(s) {
-  const weapon = { kinetic: '动能', laser: '激光', plasma: '等离子', missile: '导弹', ion: '离子' }[s.weaponType] || s.weaponType;
-  const armor = { light: '轻型装甲', medium: '中型装甲', heavy: '重型装甲', shielded: '护盾装甲' }[s.armorType] || s.armorType;
-  return `攻击 ${s.attack} · 耐久 ${s.hp} · 护盾 ${s.shieldHp}` +
-    (weapon ? ` · ${weapon}` : '') +
-    (armor ? ` · ${armor}` : '') +
-    (s.miningCargo ? ` · 采矿货舱 ${s.miningCargo}` : '');
+  return `攻击 ${s.attack} · 耐久 ${s.hp} · 护盾 ${s.shieldHp}`;
 }
 
 function normalizeTemplate(t) {
   const out = { ...t, ships: t.ships || {}, attachLeader: !!t.attachLeader };
+  out.escortZones = [...new Set((Array.isArray(t.escortZones) ? t.escortZones : [])
+    .filter(zone => ['sentinel', 'open', 'dead', 'rift'].includes(zone)))];
+  out.escortPerMiner = !!t.escortPerMiner;
   const threshold = normalizeRetreatThreshold(t.escortRetreatThreshold);
   if (threshold == null) delete out.escortRetreatThreshold;
   else out.escortRetreatThreshold = threshold;
@@ -103,7 +101,7 @@ export async function renderFleetsTab() {
   renderLegend();
 
   document.getElementById('ft-new').addEventListener('click', () => {
-    const t = { id: Date.now(), name: '新模板', ships: {} };
+    const t = { id: Date.now(), name: '新模板', ships: {}, escortZones: [], escortPerMiner: false };
     t.attachLeader = false;
     templates.push(t);
     currentId = t.id;
@@ -270,6 +268,7 @@ function fillEditor() {
     styleRetreatButtons();
   }
   fillShips();
+  fillEscortZones();
 }
 
 function styleRetreatButtons() {
@@ -299,14 +298,16 @@ function updateSelectedTotal() {
     return;
   }
   const entries = Object.entries(t.ships || {})
-    .map(([id, qty]) => [Number(id), Math.max(0, parseInt(qty, 10) || 0)])
+    .map(([id, qty]) => [Number(id), Math.max(0, Number(qty) || 0)])
     .filter(([id, qty]) => qty > 0 && !isCommandVessel(shipDefs.find(s => Number(s.shipDefId) === id)));
   const regularTotal = entries.reduce((sum, [, qty]) => sum + qty, 0);
   const leaderTotal = t.attachLeader ? 1 : 0;
   const total = regularTotal + leaderTotal;
   const title = document.createElement('div');
   title.style.cssText = 'font-size:1.05rem;font-weight:700;color:#79c0ff;margin-bottom:4px';
-  title.textContent = `当前模板已选：${total.toLocaleString()} 艘`;
+  title.textContent = t.escortPerMiner
+    ? `护航比例总计：每艘采矿舰 ${regularTotal.toLocaleString()} 艘`
+    : `当前模板已选：${total.toLocaleString()} 艘`;
   const chips = document.createElement('div');
   chips.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;color:#c9d1d9;font-size:0.95rem';
   const addChip = (label, qty, accent = '#30363d') => {
@@ -377,9 +378,10 @@ function fillShips() {
     const input = document.createElement('input');
     input.type = 'number';
     input.min = '0';
-    input.value = t.ships[s.shipDefId] || '';
+    input.step = t.escortPerMiner ? '0.5' : '1';
+    input.value = t.ships[s.shipDefId] != null ? String(t.ships[s.shipDefId]) : '';
     input.addEventListener('input', () => {
-      const v = parseInt(input.value, 10) || 0;
+      const v = parseFloat(input.value) || 0;
       if (v > 0) t.ships[s.shipDefId] = v; else delete t.ships[s.shipDefId];
       updateSelectedTotal();
       save();
@@ -389,4 +391,52 @@ function fillShips() {
     tr.append(tdName, tdStats, tdInput);
     tbody.appendChild(tr);
   }
+}
+
+const ESCORT_ZONES = [
+  { key: 'sentinel', label: '哨兵区', color: '#6fce8f' },
+  { key: 'open', label: '开放区', color: '#e0a24e' },
+  { key: 'dead', label: '死亡区', color: '#e0736b' },
+  { key: 'rift', label: '裂隙区', color: '#b5abfc' },
+];
+
+function fillEscortZones() {
+  const box = document.getElementById('ft-escort-zones');
+  if (!box) return;
+  box.textContent = '';
+  const template = current();
+  if (!template) return;
+
+  for (const zone of ESCORT_ZONES) {
+    const active = (template.escortZones || []).includes(zone.key);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = zone.label;
+    button.className = `escort-zone-button${active ? ' active' : ''}`;
+    button.style.setProperty('--escort-zone-color', zone.color);
+    button.title = `将此模板标记为${zone.label}采矿护航模板`;
+    button.addEventListener('click', () => {
+      template.escortZones = active
+        ? (template.escortZones || []).filter(value => value !== zone.key)
+        : [...(template.escortZones || []), zone.key];
+      save();
+      fillEscortZones();
+    });
+    box.appendChild(button);
+  }
+
+  const perMiner = document.createElement('label');
+  perMiner.className = 'escort-per-miner';
+  perMiner.title = '开启后，模板舰船数量表示每艘采矿舰所需的护航比例。';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = !!template.escortPerMiner;
+  checkbox.addEventListener('change', () => {
+    template.escortPerMiner = checkbox.checked;
+    save();
+    fillShips();
+    updateSelectedTotal();
+  });
+  perMiner.append(checkbox, document.createTextNode('按每艘采矿舰计算比例'));
+  box.appendChild(perMiner);
 }

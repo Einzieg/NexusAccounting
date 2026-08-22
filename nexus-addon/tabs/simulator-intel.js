@@ -1,8 +1,8 @@
 // Simulator: fleet import and intel auto-fill (spy + camp scout reports).
 
-import { shipDefs } from './engine.js';
+import { shipDefs } from '../engine.js';
 import { fmt, updateFleetStats } from './simulator.js';   // circular: both are functions, only called from handlers
-import { uiLabel } from './common.js';
+import { uiLabel } from '../common.js';
 
 // ── System coordinates & distance ──────────────────────────────────────────
 
@@ -271,3 +271,4 @@ export {
   updateDistanceFromCoords, loadIntelReports, populatePlanetPicker,
   _resolvedDistanceAU, classifyDefenses, coordDistanceAU, COORD_TO_FUEL_AU,
 };
+

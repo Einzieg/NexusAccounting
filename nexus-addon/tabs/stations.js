@@ -108,6 +108,11 @@ function renderStationResources() {
   renderTable(list);
 }
 
+function wholeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.trunc(number) : 0;
+}
+
 function renderStats(list) {
   const stats = byId('stations-stats');
   stats.textContent = '';
@@ -117,7 +122,7 @@ function renderStats(list) {
   );
   for (const resource of RESOURCE_COLUMNS) {
     const total = list.reduce((sum, station) =>
-      sum + (station.error ? 0 : Number(station.resources?.[resource.field]) || 0), 0);
+      sum + (station.error ? 0 : wholeNumber(station.resources?.[resource.field])), 0);
     stats.appendChild(makeStatCard(resource.label, fmt(total), resource.valueClass));
   }
 }
@@ -125,7 +130,8 @@ function renderStats(list) {
 function numericCell(value, title = '') {
   const cell = document.createElement('td');
   cell.className = 'station-resource-number';
-  cell.textContent = value ? fmt(value) : '—';
+  const number = wholeNumber(value);
+  cell.textContent = number ? fmt(number) : '—';
   if (title) cell.title = title;
   return cell;
 }

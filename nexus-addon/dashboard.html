@@ -4,92 +4,139 @@
   <meta charset="UTF-8" />
   <title>Nexus Accounting 助手</title>
   <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="nocturne.css" />
 </head>
 <body>
-  <div class="dashboard-topline">
-    <h1>Nexus Accounting 助手</h1>
-    <button id="build-version" class="build-version" type="button" title="查看当前修改内容">1.8.10+20260817-100534</button>
-  </div>
+  <aside class="nx-sidebar" id="nx-sidebar">
+    <div class="nx-brand">
+      <div class="nx-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" width="20" height="20" fill="none">
+          <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(-30 32 32)" stroke="var(--color-accent)" stroke-width="2.8"/>
+          <ellipse cx="32" cy="32" rx="27" ry="12.5" transform="rotate(30 32 32)" stroke="color-mix(in srgb, var(--color-accent) 40%, transparent)" stroke-width="2"/>
+          <circle cx="32" cy="32" r="7.5" fill="var(--color-accent)"/>
+          <circle cx="50.5" cy="19.5" r="3.6" fill="var(--color-text)"/>
+        </svg>
+      </div>
+      <div class="nx-brand-text">
+        <div class="nx-brand-name">Nexus</div>
+        <div class="nx-brand-sub">Accounting 助手</div>
+      </div>
+    </div>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="global">总览</button>
-    <button class="tab" data-tab="surveys">勘测</button>
-    <button class="tab" data-tab="pirates">海盗</button>
-    <button class="tab" data-tab="mining">采矿</button>
-    <button class="tab" data-tab="battles">战斗</button>
-    <button class="tab" data-tab="debris">残骸</button>
-    <button class="tab" data-tab="expeditions">远征</button>
-    <button class="tab" data-tab="wormholes">虫洞</button>
-    <button class="tab" data-tab="finder">星系侦察</button>
-    <button class="tab" data-tab="asteroids">小行星带</button>
-    <button class="tab" data-tab="fleets">舰队模板</button>
-    <button class="tab" data-tab="scouting">侦察任务</button>
-    <button class="tab" data-tab="xeno">异星遗迹</button>
-    <button class="tab" data-tab="stations">站点资源</button>
-    <button class="tab" data-tab="market">市场</button>
-    <button class="tab" data-tab="market-history">交易分析</button>
-    <button class="tab" data-tab="techtree">科技树</button>
-  </nav>
+    <nav class="tabs nx-sidebar-nav">
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">总览</div>
+        <button class="tab nx-nav-item active" data-tab="global"><span class="nx-nav-icon">◆</span><span>综合总览</span></button>
+      </div>
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">行动</div>
+        <button class="tab nx-nav-item" data-tab="surveys"><span class="nx-nav-icon">◇</span><span>勘测</span></button>
+        <button class="tab nx-nav-item" data-tab="pirates"><span class="nx-nav-icon">☠</span><span>海盗</span></button>
+        <button class="tab nx-nav-item" data-tab="mining"><span class="nx-nav-icon">▲</span><span>采矿</span></button>
+        <button class="tab nx-nav-item" data-tab="battles"><span class="nx-nav-icon">✦</span><span>战斗</span></button>
+        <button class="tab nx-nav-item" data-tab="debris"><span class="nx-nav-icon">✧</span><span>残骸</span></button>
+        <button class="tab nx-nav-item" data-tab="expeditions"><span class="nx-nav-icon">➤</span><span>远征</span></button>
+        <button class="tab nx-nav-item" data-tab="wormholes"><span class="nx-nav-icon">◎</span><span>虫洞</span></button>
+        <button class="tab nx-nav-item" data-tab="xeno"><span class="nx-nav-icon">✷</span><span>异星遗迹</span></button>
+      </div>
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">探索</div>
+        <button class="tab nx-nav-item" data-tab="finder"><span class="nx-nav-icon">⌕</span><span>星系侦察</span></button>
+        <button class="tab nx-nav-item" data-tab="asteroids"><span class="nx-nav-icon">●</span><span>小行星带</span></button>
+        <button class="tab nx-nav-item" data-tab="scouting"><span class="nx-nav-icon">◐</span><span>侦察任务</span></button>
+        <button class="tab nx-nav-item" data-tab="stations"><span class="nx-nav-icon">▣</span><span>站点资源</span></button>
+      </div>
+      <div class="nx-nav-group">
+        <div class="nx-nav-group-title">市场与研发</div>
+        <button class="tab nx-nav-item" data-tab="market"><span class="nx-nav-icon">⚖</span><span>市场</span></button>
+        <button class="tab nx-nav-item" data-tab="market-history"><span class="nx-nav-icon">↺</span><span>交易分析</span></button>
+        <button class="tab nx-nav-item" data-tab="fleets"><span class="nx-nav-icon">▶</span><span>舰队模板</span></button>
+        <button class="tab nx-nav-item" data-tab="techtree"><span class="nx-nav-icon">⌥</span><span>科技树</span></button>
+        <button class="tab nx-nav-item" data-tab="simulator"><span class="nx-nav-icon">⌖</span><span>战斗模拟器</span></button>
+      </div>
+    </nav>
 
-  <div class="status-bar">
-    <label class="server-picker" for="server-select">
-      服务器
-      <select id="server-select">
-        <option value="s0">第 0 赛季 · NX-S0</option>
-        <option value="nf">新边疆 · NX-NF</option>
-      </select>
-    </label>
-    <span id="status-text">正在加载…</span>
-    <button id="btn-scrape">立即同步</button>
-    <button id="btn-reset" style="color:#ff7b72; border-color:#ff7b7244;">清空全部数据</button>
-    <button id="btn-rebuild" title="根据已保存的报告重新计算全部汇总统计，用于修复部分操作失败后产生的统计偏差。">重建统计</button>
-    <button id="btn-export">导出 JSON</button>
-    <button id="btn-import">导入 JSON</button>
-    <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
-    <a href="simulator.html" style="color:#58a6ff; margin-left:auto;">战斗模拟器 →</a>
-  </div>
+    <div class="nx-sidebar-footer">
+      <button id="build-version" class="build-version" type="button" title="查看当前修改内容">2.0.1+20260822-142447</button>
+      <div id="storage-footer"></div>
+    </div>
+  </aside>
 
-  <div class="controls" id="global-controls">
-    <label for="mode-select">视图：</label>
-    <select id="mode-select">
-      <option value="all">全部时间</option>
-      <option value="daily">按天</option>
-      <option value="last3">最近 3 天</option>
-      <option value="last7">最近 7 天</option>
-      <option value="last30">最近 30 天</option>
-      <option value="hourly">按小时</option>
-    </select>
-    <label for="window-from" style="margin-left:12px;">日期：</label>
-    <input type="date" id="window-from" title="显示从该日期开始的数据（留空表示最早日期）。"
-      style="background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:3px 6px; border-radius:6px; font-size:0.85rem; color-scheme:dark;" />
-    <span style="color:#8b949e;">–</span>
-    <input type="date" id="window-to" title="显示截至该日期的数据（留空表示最新日期）。"
-      style="background:#21262d; border:1px solid #30363d; color:#e6edf3; padding:3px 6px; border-radius:6px; font-size:0.85rem; color-scheme:dark;" />
-    <label for="zone-select" style="margin-left:12px;">区域：</label>
-    <select id="zone-select" title="按数据采集时所在的安全区域筛选。分区汇总依据本地保存的有限条数记录计算。">
-      <option value="all">全部区域</option>
-      <option value="sentinel">哨兵区</option>
-      <option value="open">开放区</option>
-      <option value="dead">死亡区</option>
-      <option value="rift">裂隙区</option>
-      <option value="unknown">未知</option>
-    </select>
-    <span style="margin-left:auto; display:flex; align-items:center; gap:8px; font-size:0.8rem; color:#8b949e;">
-      记录上限
-      <span title="本地最多保存的单条勘测报告数量。达到上限后会丢弃较旧记录；设为 0 表示不限制。"
-        style="display:inline-flex; align-items:center; justify-content:center;
-               width:14px; height:14px; border-radius:50%; border:1px solid #8b949e;
-               color:#8b949e; font-size:0.65rem; cursor:help; flex-shrink:0;">ⓘ</span>
-      :
-      <input id="records-cap" type="text" value="5000"
-        style="width:70px; background:#21262d; border:1px solid #30363d; color:#e6edf3;
-               padding:4px 8px; border-radius:6px; font-size:0.8rem;" />
-      <span id="cap-warning" style="display:none; color:#ff7b72; font-size:0.75rem;">必须是大于或等于 0 的整数</span>
-      <button id="btn-save-cap">保存</button>
-    </span>
-  </div>
+  <main class="nx-main">
+    <div class="status-bar">
+      <button id="nx-sidebar-toggle" type="button" aria-label="切换导航栏">☰</button>
+      <span class="nx-status-pill"><span class="nx-status-dot"></span><span id="status-text">正在加载…</span></span>
+      <span class="nx-spacer"></span>
+      <label class="server-picker" for="server-select">服务器
+        <select id="server-select">
+          <option value="s0">第 0 赛季 · NX-S0</option>
+          <option value="nf">新边疆 · NX-NF</option>
+        </select>
+      </label>
+      <span class="nx-filter-controls" id="nx-filter-controls">
+        <select id="mode-select" title="视图">
+          <option value="all">全部时间</option>
+          <option value="daily">按天</option>
+          <option value="last3">最近 3 天</option>
+          <option value="last7">最近 7 天</option>
+          <option value="last30">最近 30 天</option>
+          <option value="hourly">按小时</option>
+        </select>
+        <span class="nx-window-bar">
+          <input type="date" id="window-from" title="显示从该日期开始的数据（留空表示最早日期）。" />
+          <span class="nx-window-dash">–</span>
+          <input type="date" id="window-to" title="显示截至该日期的数据（留空表示最新日期）。" />
+        </span>
+        <select id="zone-select" title="按数据采集时所在的安全区域筛选。">
+          <option value="all">全部区域</option>
+          <option value="sentinel">哨兵区</option>
+          <option value="open">开放区</option>
+          <option value="dead">死亡区</option>
+          <option value="rift">裂隙区</option>
+          <option value="unknown">未知</option>
+        </select>
+      </span>
+      <button id="btn-scrape">↻ 立即同步</button>
+      <details class="nx-menu">
+        <summary title="更多设置">⚙</summary>
+        <div class="nx-menu-panel">
+          <div class="nx-menu-row">
+            <span>记录上限</span>
+            <input id="records-cap" type="text" value="5000" />
+            <button id="btn-save-cap">保存</button>
+          </div>
+          <span id="cap-warning" style="display:none; color:var(--color-danger); font-size:0.75rem;">必须是大于或等于 0 的整数</span>
+          <div class="nx-menu-row nx-weight-editor">
+            <span title="用于所有总净收益和矿石等值估算。">资源等值权重</span>
+            <div class="nx-weight-grid">
+              <label>矿石 <input type="number" id="w-ore" min="0" step="0.1"></label>
+              <label>硅酸盐 <input type="number" id="w-silicates" min="0" step="0.1"></label>
+              <label>氢 <input type="number" id="w-hydrogen" min="0" step="0.1"></label>
+              <label>合金 <input type="number" id="w-alloys" min="0" step="0.1"></label>
+              <label>先驱碎片 <input type="number" id="w-precursor_fragments" min="0" step="1"></label>
+              <label>遗物 <input type="number" id="w-artifact" min="0" step="1"></label>
+              <label>其他稀有资源 <input type="number" id="w-rare" min="0" step="0.1"></label>
+            </div>
+            <button id="btn-save-weights">保存权重</button>
+          </div>
+          <div class="nx-menu-row">
+            <button id="btn-rebuild" title="根据已保存的报告重新计算全部汇总统计。">重建统计</button>
+            <button id="btn-export">导出 JSON</button>
+            <button id="btn-import">导入 JSON</button>
+            <input id="import-file" type="file" accept=".json,application/json" style="display:none;" />
+          </div>
+          <div class="nx-menu-row">
+            <button id="btn-reset" style="color:var(--color-danger);">清空全部数据</button>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="controls" id="global-controls" style="display:none;"></div>
+    <div class="nx-content">
 
   <div id="global-content">
+    <div class="nx-screen-head"><h1>综合总览</h1><p>跨来源资源、净收益和行动统计</p></div>
     <p style="color:#8b949e; font-size:0.85rem; margin-bottom:12px;">
       汇总勘测、海盗突袭、采矿、残骸回收（精确值）和远征数据。
     </p>
@@ -116,6 +163,7 @@
   </div>
 
   <div id="main-content" style="display:none;">
+    <div class="nx-screen-head"><h1>勘测</h1><p>异常勘测收益、损失与净收益</p></div>
     <div class="controls" style="margin-top:0;">
       <label for="event-select">事件：</label>
       <select id="event-select" title="按异常事件类型筛选勘测统计和表格。">
@@ -188,6 +236,7 @@
   </div>
 
   <div id="pirates-content" style="display:none;">
+    <div class="nx-screen-head"><h1>海盗</h1><p>海盗营地行动、战利品与损失</p></div>
     <div class="section-label">已收集战利品</div>
     <div class="stats" id="p-stats-collected"></div>
 
@@ -250,6 +299,7 @@
   </div>
 
   <div id="mining-content" style="display:none;">
+    <div class="nx-screen-head"><h1>采矿</h1><p>采矿产出、维护、燃料与净收益</p></div>
     <div class="section-label">已运回资源</div>
     <div class="stats" id="m-stats-delivered"></div>
 
@@ -314,6 +364,7 @@
   <div id="battles-content" style="display:none;"></div>
 
   <div id="debris-content" style="display:none;">
+    <div class="nx-screen-head"><h1>残骸</h1><p>残骸分布、回收任务与资源构成</p></div>
     <div class="section-label">舰队已回收资源（精确值，来自返航的残骸回收任务）</div>
     <div class="stats" id="d-stats-mine"></div>
 
@@ -373,6 +424,7 @@
   </div>
 
   <div id="expeditions-content" style="display:none;">
+    <div class="nx-screen-head"><h1>远征</h1><p>远征任务、战利品、风险与损失</p></div>
     <div class="finder-controls">
       <label>出发星球
         <select id="e-launch-planet"></select>
@@ -464,6 +516,7 @@
   </div>
 
   <div id="wormholes-content" style="display:none;">
+    <div class="nx-screen-head"><h1>虫洞</h1><p>虫洞行动、深度、战利品与损失</p></div>
     <div class="controls" style="margin-top:0;">
       <label for="wclass-select">虫洞等级：</label>
       <select id="wclass-select" title="按虫洞等级筛选虫洞任务。">
@@ -523,6 +576,7 @@
   </div>
 
   <div id="finder-content" style="display:none;">
+    <div class="nx-screen-head"><h1>星系侦察</h1><p>按距离、区域和联盟筛选银河目标</p></div>
     <div class="finder-controls">
       <label>起点
         <select id="f-origin"></select>
@@ -621,6 +675,7 @@
   </div>
 
   <div id="asteroids-content" style="display:none;">
+    <div class="nx-screen-head"><h1>小行星带</h1><p>搜索资源带、估算舰队并发起采矿</p></div>
     <div class="finder-controls">
       <label>采矿出发点：
         <select id="af-planet"></select>
@@ -735,6 +790,7 @@
   </div>
 
   <div id="scouting-content" style="display:none;">
+    <div class="nx-screen-head"><h1>侦察任务</h1><p>调查、残骸和战利品回收任务</p></div>
     <div class="finder-controls">
       <label>勘测出发点
         <select id="sc-planet"></select>
@@ -852,6 +908,7 @@
   </div>
 
   <div id="xeno-content" style="display:none;">
+    <div class="nx-screen-head"><h1>异星遗迹</h1><p>古代月球遗迹调查与收益</p></div>
     <div class="finder-controls">
       <label>勘测出发点
         <select id="xn-planet"></select>
@@ -934,6 +991,7 @@
   </div>
 
   <div id="fleets-content" style="display:none;">
+    <div class="nx-screen-head"><h1>舰队模板</h1><p>管理采矿、护航和通用任务舰队</p></div>
     <div class="finder-controls">
       <label>模板
         <select id="ft-select"></select>
@@ -974,11 +1032,16 @@
         <input id="ft-retreat-value" type="hidden" value="70" />
         <span id="ft-retreat-display" style="color:#8b949e;">当前 70%</span>
       </div>
+      <div class="fleet-escort-settings">
+        <div class="fleet-escort-title">采矿护航区域</div>
+        <div id="ft-escort-zones"></div>
+      </div>
       <table class="fleet-table"><tbody id="ft-ships"></tbody></table>
     </div>
   </div>
 
   <div id="stations-content" style="display:none;">
+    <div class="nx-screen-head"><h1>站点资源</h1><p>当前联盟领土内的站点仓储</p></div>
     <section class="station-resource-panel">
       <div class="reports-header">
         <div>
@@ -1035,6 +1098,7 @@
   </div>
 
   <div id="market-content" style="display:none;">
+    <div class="nx-screen-head"><h1>市场</h1><p>公开市场与联盟交易报价</p></div>
     <div class="controls" style="margin-top:0; align-items:flex-start;">
       <div class="m-filter">
         <label>市场：</label>
@@ -1090,6 +1154,7 @@
   </div>
 
   <div id="market-history-content" style="display:none;">
+    <div class="nx-screen-head"><h1>交易分析</h1><p>成交历史、手续费、净流量与估算盈利</p></div>
     <section class="market-profit-panel market-analysis-panel">
       <div class="reports-header">
         <div>
@@ -1111,7 +1176,7 @@
       <div id="m-profit-stats" class="stats"></div>
       <div class="market-profit-note market-profit-formula">
         单笔盈亏 =（收到数量 − 手续费）× 收到资源权重 − 支付数量 × 支付资源权重。<br>
-        矿石等值权重：矿石 ×1、硅酸盐 ×2、氢 ×3、合金 ×5、其他稀有资源 ×10。
+        <span id="m-weight-note">资源权重可在顶部设置菜单中调整。</span>
         这是资源价值估算，不代表已兑现为单一货币的会计利润。
       </div>
       <div class="market-flow-section">
@@ -1143,6 +1208,7 @@
   </div>
 
   <div id="techtree-content" style="display:none;">
+    <div class="nx-screen-head"><h1>科技树</h1><p>研究依赖、等级与研究队列</p></div>
     <div class="controls tt-toolbar" style="margin-top:0;">
       <label for="tt-branch">分支：</label>
       <select id="tt-branch">
@@ -1177,8 +1243,170 @@
     </div>
   </div>
 
-  <div id="storage-footer" style="margin-top:24px; padding-top:10px; border-top:1px solid #21262d;
-       color:#484f58; font-size:0.75rem;"></div>
+  <div id="simulator-content" style="display:none;">
+    <div class="nx-screen-head">
+      <h1>战斗模拟器</h1>
+      <p>基于已记录舰船数据的蒙特卡洛战斗结果预测</p>
+    </div>
+
+    <div class="finder-controls">
+      <label>模拟次数
+        <input id="opt-sims" type="number" value="100" min="1" max="10000" />
+      </label>
+      <label>最大回合
+        <input id="opt-rounds" type="number" value="15" min="1" max="20" />
+      </label>
+      <label>伤害浮动 ±%
+        <input id="opt-variance" type="number" value="10" min="0" max="50" />
+      </label>
+      <label>残骸比例 %
+        <input id="opt-debris" type="number" value="30" min="0" max="100" />
+      </label>
+      <label style="flex-direction:row; gap:5px;">
+        <input id="opt-shield-regen" type="checkbox" />每回合恢复护盾
+      </label>
+      <label style="flex-direction:row; gap:5px;">
+        <input id="opt-roundtrip" type="checkbox" checked />往返航程（燃料×2）
+      </label>
+      <button id="btn-run">⌖ 开始模拟</button>
+      <button id="btn-clear">↺ 重置</button>
+      <span id="sim-status" style="margin-left:auto; color:var(--color-muted); font-size:0.8rem;"></span>
+    </div>
+
+    <div class="sim-layout">
+      <div class="sim-panel sim-panel-attacker">
+        <div class="sim-panel-head">
+          <div class="sim-panel-icon">⚡</div>
+          <div class="sim-panel-headtext">
+            <div class="sim-panel-side">进攻方</div>
+            <div id="atk-fleet-name" class="sim-panel-name">进攻舰队</div>
+          </div>
+        </div>
+        <div class="sim-panel-body">
+          <div class="load-fleet-bar">
+            <select id="fleet-planet" title="导入舰船的星球">
+              <option value="home">母星</option>
+            </select>
+            <select id="fleet-class" title="按舰船类型筛选">
+              <option value="">全部类型</option>
+              <option value="combat">战斗</option>
+              <option value="special">特殊</option>
+              <option value="recon">侦察</option>
+              <option value="utility">通用</option>
+            </select>
+            <button id="btn-load-fleet">载入我的舰队</button>
+          </div>
+          <div class="coord-bar">
+            <span class="coord-label">起点星系</span>
+            <input id="atk-system" type="text" placeholder="例如 A12-27" style="width:100px;" />
+          </div>
+          <details class="tech-panel">
+            <summary>研究等级</summary>
+            <div class="load-fleet-bar" style="margin-top:8px;">
+              <button id="btn-fill-tech-attacker">填入我的等级</button>
+            </div>
+            <div class="tech-grid" id="attacker-techs"></div>
+          </details>
+          <div class="sim-ships-label">战斗舰船</div>
+          <table class="fleet-table"><tbody id="attacker-ships"></tbody></table>
+        </div>
+      </div>
+      <div class="sim-panel sim-panel-defender">
+        <div class="sim-panel-head">
+          <div class="sim-panel-icon">⛨</div>
+          <div class="sim-panel-headtext">
+            <div class="sim-panel-side">防守方</div>
+            <div id="def-fleet-name" class="sim-panel-name">防守舰队</div>
+          </div>
+        </div>
+        <div class="sim-panel-body">
+          <div class="load-fleet-bar">
+            <select id="report-select" style="flex:1;">
+              <option value="">从情报报告填充…</option>
+            </select>
+          </div>
+          <div class="coord-bar">
+            <span class="coord-label">目标星系</span>
+            <input id="def-system" type="text" placeholder="例如 G35-41" style="width:100px;" />
+            <span id="distance-display" class="coord-distance"></span>
+          </div>
+          <details class="tech-panel">
+            <summary>研究等级</summary>
+            <div class="load-fleet-bar" style="margin-top:8px;">
+              <button id="btn-fill-tech-defender">填入我的等级</button>
+            </div>
+            <div class="tech-grid" id="defender-techs"></div>
+          </details>
+          <label class="sim-marauder" title="掠夺者级海盗具有隐藏的 ×1.15 耐久和护盾倍率。">
+            <input type="checkbox" id="def-marauder" />
+            掠夺者级海盗（耐久与护盾 ×1.15）
+          </label>
+          <div class="tech-panel">
+            <span class="tech-label" title="导弹防御等级（1–15）">导弹防御</span>
+            <input type="number" id="def-missile" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="激光防御等级（1–15）">激光防御</span>
+            <input type="number" id="def-laser" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="轨道炮防御等级（1–15）">轨道炮防御</span>
+            <input type="number" id="def-railgun" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="等离子防御等级（1–15）">等离子防御</span>
+            <input type="number" id="def-plasma" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="离子防御等级（1–15）">离子防御</span>
+            <input type="number" id="def-ion" class="tech-input" min="0" max="15" value="0" />
+            <span class="tech-label" title="电子战等级（1–10），每级降低进攻方 3% 伤害">电子战</span>
+            <input type="number" id="def-ew" class="tech-input" min="0" max="10" value="0" />
+            <span class="tech-label" title="护盾发生器等级（1–15），当前模拟尚未建模其效果">护盾发生器</span>
+            <input type="number" id="def-shield" class="tech-input" min="0" max="15" value="0" />
+          </div>
+          <div id="target-intel" style="display:none;" class="tech-panel"></div>
+          <div class="sim-ships-label">战斗舰船</div>
+          <table class="fleet-table"><tbody id="defender-ships"></tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div id="results" style="display:none;">
+      <div class="sim-result-heading">
+        <div class="sim-result-title">模拟结果</div>
+        <div class="sim-result-rule"></div>
+      </div>
+
+      <div class="section-label">全部模拟结果</div>
+      <div class="stats" id="outcome-stats"></div>
+
+      <div class="sim-fleet-results" id="fleet-results"></div>
+
+      <div class="sim-rounds">
+        <h3 class="sim-rounds-heading">战斗回合 <span class="n" id="rounds-count"></span></h3>
+        <div class="sim-rounds-list" id="rounds-log"></div>
+      </div>
+
+      <div class="sim-losses">
+        <div>
+          <h3 class="sim-losses-heading">进攻方损失</h3>
+          <div class="sim-loss-rows" id="attacker-losses"></div>
+          <div class="stats" id="attacker-cost" style="margin-top:10px;"></div>
+        </div>
+        <div>
+          <h3 class="sim-losses-heading">防守方损失</h3>
+          <div class="sim-loss-rows" id="defender-losses"></div>
+          <div class="stats" id="defender-cost" style="margin-top:10px;"></div>
+        </div>
+      </div>
+
+      <div class="sim-debris">
+        <div class="sim-debris-title">☄ 残骸场</div>
+        <div class="sim-debris-row" id="debris-stats"></div>
+      </div>
+
+      <div class="section-label">进攻舰队燃料</div>
+      <div class="stats" id="fuel-stats"></div>
+    </div>
+
+  </div>
+
+
+    </div><!-- /.nx-content -->
+  </main>
 
   <!-- Load order: polyfill + common.js first, tabs next, orchestrator last. -->
   <script src="browser-polyfill.js"></script>
